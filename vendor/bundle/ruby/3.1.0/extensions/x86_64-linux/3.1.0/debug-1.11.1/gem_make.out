@@ -1,0 +1,19 @@
+current directory: /home/adduser/code/world-at-war/vendor/bundle/ruby/3.1.0/gems/debug-1.11.1/ext/debug
+/home/adduser/.rbenv/versions/3.1.2/bin/ruby extconf.rb
+creating Makefile
+
+current directory: /home/adduser/code/world-at-war/vendor/bundle/ruby/3.1.0/gems/debug-1.11.1/ext/debug
+make DESTDIR\= sitearchdir\=./.gem.20260303-1576-yoiqnx sitelibdir\=./.gem.20260303-1576-yoiqnx clean
+
+current directory: /home/adduser/code/world-at-war/vendor/bundle/ruby/3.1.0/gems/debug-1.11.1/ext/debug
+make DESTDIR\= sitearchdir\=./.gem.20260303-1576-yoiqnx sitelibdir\=./.gem.20260303-1576-yoiqnx
+compiling debug.c
+compiling iseq_collector.c
+linking shared-object debug/debug.so
+
+current directory: /home/adduser/code/world-at-war/vendor/bundle/ruby/3.1.0/gems/debug-1.11.1/ext/debug
+make DESTDIR\= sitearchdir\=./.gem.20260303-1576-yoiqnx sitelibdir\=./.gem.20260303-1576-yoiqnx install
+/usr/bin/install -c -m 0755 debug.so ./.gem.20260303-1576-yoiqnx/debug
+
+current directory: /home/adduser/code/world-at-war/vendor/bundle/ruby/3.1.0/gems/debug-1.11.1/ext/debug
+make DESTDIR\= sitearchdir\=./.gem.20260303-1576-yoiqnx sitelibdir\=./.gem.20260303-1576-yoiqnx clean
