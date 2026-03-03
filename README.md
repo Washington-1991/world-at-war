@@ -1,24 +1,21 @@
-# README
+# 🌍 World at War – WWI MMO Strategy Game
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
+## Stack
+- Ruby on Rails
+- PostgreSQL
+- Real-time timestamp economy system
 
-Things you may want to cover:
+## Concept
+World at War es un MMO estratégico ambientado en la Primera Guerra Mundial
+basado en infraestructura real, logística y economía interconectada.
 
-* Ruby version
+## Current Version
+v1.0 – Economy Core
 
-* System dependencies
-
-* Configuration
-
-* Database creation
-
-* Database initialization
-
-* How to run the test suite
-
-* Services (job queues, cache servers, search engines, etc.)
-
-* Deployment instructions
-
-* ...
+## MVP Goals
+- Multi-city support
+- Population growth & consumption
+- Farms
+- Oil extraction
+- Refining system
+- Logistics base
