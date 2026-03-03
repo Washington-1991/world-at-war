@@ -23,5 +23,10 @@ module WorldAtWar
     #
     # config.time_zone = "Central Time (US & Canada)"
     # config.eager_load_paths << Rails.root.join("extras")
+
+    # Configuración para usar UUID como tipo de clave primaria por defecto en los generadores
+    config.generators do |g|
+      g.orm :active_record, primary_key_type: :uuid
+    end
   end
 end

@@ -33,3 +33,7 @@
 
 # Ignore master key for decrypting credentials and more.
 /config/master.key
+
+# Bundler local installs (DO NOT COMMIT)
+/vendor/bundle/
+/vendor/bundle/**
