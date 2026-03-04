@@ -1,0 +1,19 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  key: farm
+  name: Farm
+  description: MyText
+  image: MyString
+  infrastructure_cost: 1
+  has_hp: true
+  rules: {}
+
+two:
+  key: town_hall
+  name: Town Hall
+  description: MyText
+  image: MyString
+  infrastructure_cost: 1
+  has_hp: false
+  rules: {}

@@ -10,11 +10,63 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_03_03_205821) do
+ActiveRecord::Schema[7.2].define(version: 2026_03_04_174802) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
+
+  create_table "buildings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "key", null: false
+    t.string "name", null: false
+    t.text "description", default: "", null: false
+    t.string "image", default: "", null: false
+    t.integer "infrastructure_cost", default: 0, null: false
+    t.boolean "has_hp", default: true, null: false
+    t.jsonb "rules", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_buildings_on_key", unique: true
+  end
+
+  create_table "cities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "user_id", null: false
+    t.integer "total_population", default: 0, null: false
+    t.integer "free_population", default: 0, null: false
+    t.integer "workers_population", default: 0, null: false
+    t.integer "military_population", default: 0, null: false
+    t.integer "university_population", default: 0, null: false
+    t.integer "laboratory_population", default: 0, null: false
+    t.integer "food", default: 0, null: false
+    t.integer "coal", default: 0, null: false
+    t.integer "iron_ore", default: 0, null: false
+    t.integer "stone", default: 0, null: false
+    t.integer "wood", default: 0, null: false
+    t.integer "crude_oil", default: 0, null: false
+    t.integer "fuel", default: 0, null: false
+    t.integer "energy", default: 0, null: false
+    t.integer "knowledge", default: 0, null: false
+    t.integer "money", default: 0, null: false
+    t.datetime "last_tick_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_cities_on_user_id"
+  end
+
+  create_table "city_buildings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "city_id", null: false
+    t.uuid "building_id", null: false
+    t.integer "level", default: 1, null: false
+    t.integer "workers_assigned", default: 0, null: false
+    t.boolean "enabled", default: true, null: false
+    t.integer "hp"
+    t.integer "max_hp"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["building_id"], name: "index_city_buildings_on_building_id"
+    t.index ["city_id", "building_id"], name: "index_city_buildings_on_city_id_and_building_id", unique: true
+    t.index ["city_id"], name: "index_city_buildings_on_city_id"
+  end
 
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "name", null: false
@@ -27,4 +79,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_03_205821) do
     t.index ["email"], name: "index_users_on_email", unique: true
     t.check_constraint "role = ANY (ARRAY[0, 1])", name: "users_role_check"
   end
+
+  add_foreign_key "cities", "users"
+  add_foreign_key "city_buildings", "buildings"
+  add_foreign_key "city_buildings", "cities"
 end

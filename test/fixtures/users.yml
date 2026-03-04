@@ -4,12 +4,12 @@ one:
   name: MyString
   birth_date: 2026-03-03
   birth_country: MyString
-  email: 
+  email: one@example.com
   role: 1
 
 two:
   name: MyString
   birth_date: 2026-03-03
   birth_country: MyString
-  email: 
+  email: two@example.com
   role: 1

@@ -1,6 +1,9 @@
 class User < ApplicationRecord
   enum :role, { player: 0, admin: 1 }
 
+  # Relaciones
+  has_many :cities, dependent: :destroy
+
   # Seguridad / integridad
   validates :email, presence: true, uniqueness: { case_sensitive: false }
   validates :name, presence: true, length: { in: 2..32 }

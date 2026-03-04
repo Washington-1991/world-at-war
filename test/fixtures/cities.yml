@@ -1,0 +1,41 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  user: one
+  total_population: 1
+  free_population: 1
+  workers_population: 1
+  military_population: 1
+  university_population: 1
+  laboratory_population: 1
+  food: 1
+  coal: 1
+  iron_ore: 1
+  stone: 1
+  wood: 1
+  crude_oil: 1
+  fuel: 1
+  energy: 1
+  knowledge: 1
+  money: 1
+  last_tick_at: 2026-03-04 12:30:11
+
+two:
+  user: two
+  total_population: 1
+  free_population: 1
+  workers_population: 1
+  military_population: 1
+  university_population: 1
+  laboratory_population: 1
+  food: 1
+  coal: 1
+  iron_ore: 1
+  stone: 1
+  wood: 1
+  crude_oil: 1
+  fuel: 1
+  energy: 1
+  knowledge: 1
+  money: 1
+  last_tick_at: 2026-03-04 12:30:11
