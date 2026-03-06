@@ -2,6 +2,9 @@ ENV["RAILS_ENV"] ||= "test"
 require_relative "../config/environment"
 require "rails/test_help"
 
+# ✅ Carga helpers/factories personalizados (ej: test/support/waw_factories.rb)
+Dir[Rails.root.join("test/support/**/*.rb")].each { |f| require f }
+
 module ActiveSupport
   class TestCase
     # Run tests in parallel with specified workers

@@ -14,6 +14,16 @@ class CityBuilding < ApplicationRecord
 
   validate :hp_must_be_nil_when_building_has_no_hp
 
+  # ✅ Paso 2: defensa extra (anti-exploit / anti-corrupción)
+  # Impide que workers_assigned supere workers_required definido en Building.rules[level]
+  validate :workers_assigned_cannot_exceed_required
+
+  # Helper usado por el service y por esta validación
+  def workers_required
+    return 0 if building.nil? || level.nil?
+    building.workers_required_for(level).to_i
+  end
+
   private
 
   def hp_must_be_nil_when_building_has_no_hp
@@ -21,5 +31,14 @@ class CityBuilding < ApplicationRecord
 
     errors.add(:hp, "must be nil for this building") unless hp.nil?
     errors.add(:max_hp, "must be nil for this building") unless max_hp.nil?
+  end
+
+  def workers_assigned_cannot_exceed_required
+    return if building.nil? || level.nil? || workers_assigned.nil?
+
+    required = workers_required
+    return if workers_assigned <= required
+
+    errors.add(:workers_assigned, "cannot exceed workers_required (#{required}) for this level")
   end
 end

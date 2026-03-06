@@ -8,6 +8,9 @@ class City::Tick
   # Consumo militar: 1 soldado = 0.0333 comida/h ~ 1/30
   MILITARY_DENOM = 30
 
+  # ✅ Anti-DoS / anti-overflow: máximo catch-up por request
+  MAX_HOURS_PER_TICK = 72
+
   def initialize(city, now: Time.current)
     @city = city
     @now  = now
@@ -25,12 +28,20 @@ class City::Tick
       hours = hours_elapsed
       return @city if hours <= 0
 
+      # ✅ Cap: evita que un jugador fuerce catch-up enorme y te tumbe el servidor
+      hours = [ hours, MAX_HOURS_PER_TICK ].min
+
       apply_population_growth(hours)
       apply_food_consumption(hours)
 
-      # TODO: producción por edificios, energía, dinero, conocimiento, moral/emigración, etc.
+      # ✅ Paso 3: recalcula workers_population desde población y rebalancea asignaciones si hace falta
+      @city.sync_workforce!(already_locked: true)
 
-      @city.last_tick_at = @now
+      # ✅ Paso 4: producción económica por edificios (server-authoritative)
+      City::ApplyBuildingEconomy.call(city: @city, hours: hours, already_locked: true)
+
+      # ✅ Idempotencia: avanzamos last_tick_at solo lo procesado
+      @city.last_tick_at = @city.last_tick_at + hours.hours
       @city.save!
     end
 
