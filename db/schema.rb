@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_03_04_174802) do
+ActiveRecord::Schema[7.2].define(version: 2026_03_06_111832) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pgcrypto"
@@ -68,6 +68,21 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_04_174802) do
     t.index ["city_id"], name: "index_city_buildings_on_city_id"
   end
 
+  create_table "ledger_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "city_id", null: false
+    t.uuid "actor_user_id"
+    t.string "action_type", null: false
+    t.jsonb "delta", default: {}, null: false
+    t.jsonb "meta", default: {}, null: false
+    t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.index ["action_type"], name: "index_ledger_events_on_action_type"
+    t.index ["actor_user_id"], name: "index_ledger_events_on_actor_user_id"
+    t.index ["city_id", "action_type", "created_at"], name: "index_ledger_events_on_city_action_created_at"
+    t.index ["city_id", "created_at"], name: "index_ledger_events_on_city_id_and_created_at"
+    t.index ["city_id"], name: "index_ledger_events_on_city_id"
+    t.index ["created_at"], name: "index_ledger_events_on_created_at"
+  end
+
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "name", null: false
     t.date "birth_date", null: false
@@ -83,4 +98,6 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_04_174802) do
   add_foreign_key "cities", "users"
   add_foreign_key "city_buildings", "buildings"
   add_foreign_key "city_buildings", "cities"
+  add_foreign_key "ledger_events", "cities"
+  add_foreign_key "ledger_events", "users", column: "actor_user_id"
 end

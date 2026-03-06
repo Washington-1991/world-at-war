@@ -11,6 +11,19 @@ class City::Tick
   # ✅ Anti-DoS / anti-overflow: máximo catch-up por request
   MAX_HOURS_PER_TICK = 72
 
+  RESOURCE_KEYS = %w[
+    food
+    coal
+    iron_ore
+    stone
+    wood
+    crude_oil
+    fuel
+    energy
+    knowledge
+    money
+  ].freeze
+
   def initialize(city, now: Time.current)
     @city = city
     @now  = now
@@ -31,6 +44,8 @@ class City::Tick
       # ✅ Cap: evita que un jugador fuerce catch-up enorme y te tumbe el servidor
       hours = [ hours, MAX_HOURS_PER_TICK ].min
 
+      before_resources = resource_snapshot
+
       apply_population_growth(hours)
       apply_food_consumption(hours)
 
@@ -39,6 +54,11 @@ class City::Tick
 
       # ✅ Paso 4: producción económica por edificios (server-authoritative)
       City::ApplyBuildingEconomy.call(city: @city, hours: hours, already_locked: true)
+
+      after_resources = resource_snapshot
+      delta = compute_resource_delta(before_resources, after_resources)
+
+      record_tick_ledger_event!(delta: delta, hours: hours) if delta.any?
 
       # ✅ Idempotencia: avanzamos last_tick_at solo lo procesado
       @city.last_tick_at = @city.last_tick_at + hours.hours
@@ -67,5 +87,31 @@ class City::Tick
 
     @city.food -= total
     @city.food = 0 if @city.food < 0
+  end
+
+  def resource_snapshot
+    RESOURCE_KEYS.index_with do |key|
+      @city.public_send(key).to_i
+    end
+  end
+
+  def compute_resource_delta(before_resources, after_resources)
+    RESOURCE_KEYS.each_with_object({}) do |key, acc|
+      diff = after_resources.fetch(key).to_i - before_resources.fetch(key).to_i
+      acc[key] = diff if diff != 0
+    end
+  end
+
+  def record_tick_ledger_event!(delta:, hours:)
+    LedgerEvent.create!(
+      city: @city,
+      actor_user: nil,
+      action_type: "tick",
+      delta: delta,
+      meta: {
+        "hours" => hours,
+        "source" => "tick"
+      }
+    )
   end
 end

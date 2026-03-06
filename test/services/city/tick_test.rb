@@ -9,7 +9,10 @@ class CityTickTest < ActiveSupport::TestCase
     city.update!(last_tick_at: nil)
 
     now = Time.current
-    city.tick!(now: now)
+
+    assert_no_difference "LedgerEvent.count" do
+      city.tick!(now: now)
+    end
 
     city.reload
     assert_equal now.to_i, city.last_tick_at.to_i
@@ -24,7 +27,10 @@ class CityTickTest < ActiveSupport::TestCase
 
     snapshot = city.reload.attributes.slice("food", "money", "total_population", "free_population", "workers_population")
 
-    city.tick!(now: now) # 0 horas
+    assert_no_difference "LedgerEvent.count" do
+      city.tick!(now: now) # 0 horas
+    end
+
     snapshot2 = city.reload.attributes.slice("food", "money", "total_population", "free_population", "workers_population")
 
     assert_equal snapshot, snapshot2
@@ -40,7 +46,10 @@ class CityTickTest < ActiveSupport::TestCase
 
     before_pop = city.total_population
 
-    city.tick!(now: now)
+    assert_difference "LedgerEvent.count", 1 do
+      city.tick!(now: now)
+    end
+
     city.reload
 
     # last_tick_at avanza 72h, no a now
@@ -51,6 +60,14 @@ class CityTickTest < ActiveSupport::TestCase
 
     # balance poblacional se mantiene
     assert_equal city.total_population, city.population_breakdown_sum
+
+    event = LedgerEvent.order(created_at: :desc).first
+    assert_equal "tick", event.action_type
+    assert_nil event.actor_user_id
+    assert_equal city.id, event.city_id
+    assert_equal 72, event.meta["hours"]
+    assert_equal "tick", event.meta["source"]
+    assert event.delta.key?("food"), "tick ledger should include food delta when consumption occurs"
   end
 
   test "tick is idempotent when called twice with the same now" do
@@ -60,14 +77,20 @@ class CityTickTest < ActiveSupport::TestCase
     now = Time.current
     city.update!(last_tick_at: now - 2.hours)
 
-    city.tick!(now: now)
+    assert_difference "LedgerEvent.count", 1 do
+      city.tick!(now: now)
+    end
+
     snapshot = city.reload.attributes.slice(
       "food", "money", "energy", "knowledge",
       "total_population", "free_population", "workers_population",
       "last_tick_at"
     )
 
-    city.tick!(now: now)
+    assert_no_difference "LedgerEvent.count" do
+      city.tick!(now: now)
+    end
+
     snapshot2 = city.reload.attributes.slice(
       "food", "money", "energy", "knowledge",
       "total_population", "free_population", "workers_population",
@@ -109,11 +132,22 @@ class CityTickTest < ActiveSupport::TestCase
     military = ((city.military_population * hours) + (City::Tick::MILITARY_DENOM / 2)) / City::Tick::MILITARY_DENOM
     expected_consumption = civil + military
 
-    city.tick!(now: now)
+    assert_difference "LedgerEvent.count", 1 do
+      city.tick!(now: now)
+    end
+
     after_food = city.reload.food
 
     expected_after = before_food - expected_consumption + 100
     assert_equal expected_after, after_food
+
+    event = LedgerEvent.order(created_at: :desc).first
+    assert_equal "tick", event.action_type
+    assert_nil event.actor_user_id
+    assert_equal city.id, event.city_id
+    assert_equal 1, event.meta["hours"]
+    assert_equal "tick", event.meta["source"]
+    assert_equal expected_after - before_food, event.delta["food"]
   end
 
   test "tick does not produce if workers are insufficient" do
@@ -143,11 +177,19 @@ class CityTickTest < ActiveSupport::TestCase
     military = ((city.military_population * hours) + (City::Tick::MILITARY_DENOM / 2)) / City::Tick::MILITARY_DENOM
     expected_consumption = civil + military
 
-    city.tick!(now: now)
+    assert_difference "LedgerEvent.count", 1 do
+      city.tick!(now: now)
+    end
+
     after_food = city.reload.food
 
     expected_after = before_food - expected_consumption
     assert_equal expected_after, after_food
+
+    event = LedgerEvent.order(created_at: :desc).first
+    assert_equal "tick", event.action_type
+    assert_equal expected_after - before_food, event.delta["food"]
+    assert_equal 1, event.meta["hours"]
   end
 
   test "food never goes negative (anti-underflow)" do
@@ -157,7 +199,10 @@ class CityTickTest < ActiveSupport::TestCase
     now = Time.current
     city.update!(last_tick_at: now - 10.hours, food: 0)
 
-    city.tick!(now: now)
+    assert_no_difference "LedgerEvent.count" do
+      city.tick!(now: now)
+    end
+
     city.reload
 
     assert city.food >= 0

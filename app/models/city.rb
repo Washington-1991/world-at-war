@@ -1,6 +1,7 @@
 class City < ApplicationRecord
   belongs_to :user
   has_many :city_buildings, dependent: :destroy
+  has_many :ledger_events, dependent: :destroy
 
   INITIAL_POPULATION = 10_000
   STARTER_PACK       = 10_000
@@ -90,6 +91,7 @@ class City < ApplicationRecord
 
   def population_must_balance
     return if total_population == population_breakdown_sum
+
     errors.add(:total_population, "must equal sum of all population groups")
   end
 
@@ -119,10 +121,11 @@ class City < ApplicationRecord
 
     city_buildings.order(id: :desc).find_each do |cb|
       break if overflow <= 0
+
       wa = cb.workers_assigned.to_i
       next if wa <= 0
 
-      reduce_by = [ wa, overflow ].min
+      reduce_by = [wa, overflow].min
       cb.update!(workers_assigned: wa - reduce_by)
       overflow -= reduce_by
     end

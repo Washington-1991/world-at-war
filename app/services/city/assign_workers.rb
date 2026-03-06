@@ -55,10 +55,23 @@ class City
         other_assigned = city.city_buildings.where.not(id: cb.id).sum(:workers_assigned).to_i
 
         if other_assigned + desired > capacity
-          return Result.new(ok?: false, error: ERROR_OVER_CAPACITY, details: { capacity: capacity, other_assigned: other_assigned, desired: desired })
+          return Result.new(
+            ok?: false,
+            error: ERROR_OVER_CAPACITY,
+            details: { capacity: capacity, other_assigned: other_assigned, desired: desired }
+          )
         end
 
+        workers_before = cb.workers_assigned.to_i
+
         cb.update!(workers_assigned: desired)
+
+        record_ledger_event!(
+          city: city,
+          city_building: cb,
+          workers_before: workers_before,
+          workers_after: desired
+        )
 
         Result.new(ok?: true, city_building: cb)
       end
@@ -74,6 +87,7 @@ class City
 
       city = @user.cities.find_by(id: @city_id)
       return Result.new(ok?: false, error: ERROR_NOT_FOUND, details: { city_id: @city_id }) unless city
+
       city
     end
 
@@ -87,6 +101,20 @@ class City
       desired
     rescue ArgumentError, TypeError
       Result.new(ok?: false, error: ERROR_INVALID_INPUT, details: { reason: "not_an_integer" })
+    end
+
+    def record_ledger_event!(city:, city_building:, workers_before:, workers_after:)
+      LedgerEvent.create!(
+        city: city,
+        actor_user: @user,
+        action_type: "assign_workers",
+        delta: {},
+        meta: {
+          "city_building_id" => city_building.id,
+          "workers_before" => workers_before,
+          "workers_after" => workers_after
+        }
+      )
     end
   end
 end
