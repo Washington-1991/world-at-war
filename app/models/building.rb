@@ -3,19 +3,44 @@ class Building < ApplicationRecord
 
   validates :key, presence: true, uniqueness: true
   validates :name, presence: true
-  validates :infrastructure_cost, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validates :infrastructure_cost,
+            numericality: { only_integer: true, greater_than_or_equal_to: 0 }
 
   # rules: jsonb
   # Estructura esperada:
   # {
-  #   "1" => { "workers_required" => 100, "outputs" => {...}, "inputs" => {...}, "maintenance" => {...}, "energy" => 0 },
-  #   "2" => { ... }
+  #   "levels" => {
+  #     "1" => {
+  #       "hp_base" => 120,
+  #       "workers_required" => 100,
+  #       "build_cost" => { "wood" => 50, "stone" => 30, "money" => 20 },
+  #       "outputs" => {...},
+  #       "inputs" => {...},
+  #       "maintenance" => {...},
+  #       "energy" => 0
+  #     },
+  #     "2" => { ... }
+  #   }
   # }
   def rules_for(level)
-    (rules || {})[level.to_s] || {}
+    (rules || {}).dig("levels", level.to_s) || {}
   end
 
   def workers_required_for(level)
     rules_for(level).fetch("workers_required", 0).to_i
+  end
+
+  def hp_base_for(level)
+    return 0 unless has_hp?
+
+    rules_for(level).fetch("hp_base", 0).to_i
+  end
+
+  def build_cost_for(level)
+    rules_for(level).fetch("build_cost", {}).transform_keys(&:to_s)
+  end
+
+  def infrastructure_cost_value
+    infrastructure_cost.to_i
   end
 end

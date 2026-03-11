@@ -10,6 +10,11 @@ class City < ApplicationRecord
   WORKFORCE_RATE_NUM = 60
   WORKFORCE_RATE_DEN = 100
 
+  # ✅ Phase 5: infraestructura
+  BASE_INFRASTRUCTURE_CAPACITY = 500
+  INFRASTRUCTURE_CAPACITY_PER_LEVEL = 500
+  MAX_INFRASTRUCTURE_LEVEL = 10
+
   before_validation :set_initial_state, on: :create
 
   NON_NEGATIVE_INTEGERS = %i[
@@ -23,10 +28,35 @@ class City < ApplicationRecord
     validates field, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   end
 
+  validates :infrastructure_level,
+            numericality: {
+              only_integer: true,
+              greater_than_or_equal_to: 0,
+              less_than_or_equal_to: MAX_INFRASTRUCTURE_LEVEL
+            }
+
   validate :population_must_balance
 
   def tick!(now: Time.current)
     City::Tick.new(self, now: now).call
+  end
+
+  def infrastructure_capacity
+    BASE_INFRASTRUCTURE_CAPACITY + (infrastructure_level * INFRASTRUCTURE_CAPACITY_PER_LEVEL)
+  end
+
+  def infrastructure_used
+    city_buildings.includes(:building).sum do |city_building|
+      city_building.building.infrastructure_cost_value
+    end
+  end
+
+  def infrastructure_free
+    infrastructure_capacity - infrastructure_used
+  end
+
+  def enough_infrastructure_for?(building)
+    infrastructure_free >= building.infrastructure_cost_value
   end
 
   def population_breakdown_sum
@@ -87,6 +117,9 @@ class City < ApplicationRecord
     self.wood  = STARTER_PACK if wood.zero?
     self.stone = STARTER_PACK if stone.zero?
     self.money = STARTER_PACK if money.zero?
+
+    # ✅ Phase 5: infraestructura inicial
+    self.infrastructure_level = 0 if infrastructure_level.nil?
   end
 
   def population_must_balance
@@ -125,7 +158,7 @@ class City < ApplicationRecord
       wa = cb.workers_assigned.to_i
       next if wa <= 0
 
-      reduce_by = [wa, overflow].min
+      reduce_by = [ wa, overflow ].min
       cb.update!(workers_assigned: wa - reduce_by)
       overflow -= reduce_by
     end

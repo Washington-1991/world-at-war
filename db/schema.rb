@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_03_06_111832) do
+ActiveRecord::Schema[7.2].define(version: 2026_03_09_182739) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pgcrypto"
@@ -50,6 +50,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_06_111832) do
     t.datetime "last_tick_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "infrastructure_level", default: 0, null: false
     t.index ["user_id"], name: "index_cities_on_user_id"
   end
 
