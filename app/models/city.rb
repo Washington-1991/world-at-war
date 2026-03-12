@@ -15,6 +15,18 @@ class City < ApplicationRecord
   INFRASTRUCTURE_CAPACITY_PER_LEVEL = 500
   MAX_INFRASTRUCTURE_LEVEL = 10
 
+  # ✅ Phase 5 Step 2: storage
+  STORAGE_RULES = {
+    "food"      => { building_key: "resource_depot", per_level: 10_000 },
+    "coal"      => { building_key: "resource_depot", per_level: 10_000 },
+    "iron_ore"  => { building_key: "resource_depot", per_level: 10_000 },
+    "stone"     => { building_key: "resource_depot", per_level: 10_000 },
+    "wood"      => { building_key: "resource_depot", per_level: 10_000 },
+    "crude_oil" => { building_key: "fluid_depot",    per_level: 10_000 },
+    "fuel"      => { building_key: "fluid_depot",    per_level: 10_000 },
+    "knowledge" => { building_key: "library",        per_level: 5_000 }
+  }.freeze
+
   before_validation :set_initial_state, on: :create
 
   NON_NEGATIVE_INTEGERS = %i[
@@ -57,6 +69,25 @@ class City < ApplicationRecord
 
   def enough_infrastructure_for?(building)
     infrastructure_free >= building.infrastructure_cost_value
+  end
+
+  # ✅ Phase 5 Step 2: capacidad máxima de storage por recurso
+  def max_storage_for(resource)
+    rule = storage_rule_for(resource)
+
+    total_levels = city_buildings
+      .joins(:building)
+      .where(buildings: { key: rule[:building_key] })
+      .sum(:level)
+      .to_i
+
+    total_levels * rule[:per_level]
+  end
+
+  # ✅ Phase 5 Step 2: espacio libre restante para un recurso
+  def storage_free_for(resource)
+    free = max_storage_for(resource) - current_resource_amount(resource)
+    free.positive? ? free : 0
   end
 
   def population_breakdown_sum
@@ -126,6 +157,21 @@ class City < ApplicationRecord
     return if total_population == population_breakdown_sum
 
     errors.add(:total_population, "must equal sum of all population groups")
+  end
+
+  def storage_rule_for(resource)
+    normalized = resource.to_s
+    rule = STORAGE_RULES[normalized]
+    raise ArgumentError, "Unsupported storage resource: #{normalized}" if rule.nil?
+
+    rule
+  end
+
+  def current_resource_amount(resource)
+    normalized = resource.to_s
+    raise ArgumentError, "Unsupported storage resource: #{normalized}" unless STORAGE_RULES.key?(normalized)
+
+    public_send(normalized).to_i
   end
 
   def run_sync_workforce!

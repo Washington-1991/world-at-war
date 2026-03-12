@@ -24,6 +24,17 @@ class City::Tick
     money
   ].freeze
 
+  STORAGE_CAPPED_RESOURCE_KEYS = %w[
+    food
+    coal
+    iron_ore
+    stone
+    wood
+    crude_oil
+    fuel
+    knowledge
+  ].freeze
+
   def initialize(city, now: Time.current)
     @city = city
     @now  = now
@@ -55,10 +66,13 @@ class City::Tick
       # ✅ Paso 4: producción económica por edificios (server-authoritative)
       City::ApplyBuildingEconomy.call(city: @city, hours: hours, already_locked: true)
 
+      # ✅ Phase 5 Step 2: hard cap de almacenamiento (anti-overflow)
+      truncated_resources = enforce_storage_caps!
+
       after_resources = resource_snapshot
       delta = compute_resource_delta(before_resources, after_resources)
 
-      record_tick_ledger_event!(delta: delta, hours: hours) if delta.any?
+      record_tick_ledger_event!(delta: delta, hours: hours, truncated_resources: truncated_resources) if delta.any? || truncated_resources.any?
 
       # ✅ Idempotencia: avanzamos last_tick_at solo lo procesado
       @city.last_tick_at = @city.last_tick_at + hours.hours
@@ -89,6 +103,22 @@ class City::Tick
     @city.food = 0 if @city.food < 0
   end
 
+  def enforce_storage_caps!
+    truncated = []
+
+    STORAGE_CAPPED_RESOURCE_KEYS.each do |resource|
+      current_amount = @city.public_send(resource).to_i
+      max_storage = @city.max_storage_for(resource)
+
+      next if current_amount <= max_storage
+
+      @city.public_send("#{resource}=", max_storage)
+      truncated << resource
+    end
+
+    truncated
+  end
+
   def resource_snapshot
     RESOURCE_KEYS.index_with do |key|
       @city.public_send(key).to_i
@@ -102,16 +132,20 @@ class City::Tick
     end
   end
 
-  def record_tick_ledger_event!(delta:, hours:)
+  def record_tick_ledger_event!(delta:, hours:, truncated_resources:)
+    meta = {
+      "hours" => hours,
+      "source" => "tick"
+    }
+
+    meta["truncated_resources"] = truncated_resources if truncated_resources.any?
+
     LedgerEvent.create!(
       city: @city,
       actor_user: nil,
       action_type: "tick",
       delta: delta,
-      meta: {
-        "hours" => hours,
-        "source" => "tick"
-      }
+      meta: meta
     )
   end
 end
