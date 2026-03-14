@@ -6,10 +6,8 @@ module WawFactories
   def create_user!(email: "user-#{SecureRandom.hex(4)}@example.com", password: "secret123")
     attrs = {}
 
-    # email (si existe)
     attrs[:email] = email if User.column_names.include?("email")
 
-    # role enum / string (si existe)
     if User.column_names.include?("role")
       if User.respond_to?(:roles) && User.roles.is_a?(Hash)
         attrs[:role] = User.roles.key?("player") ? "player" : User.roles.keys.first
@@ -18,10 +16,8 @@ module WawFactories
       end
     end
 
-    # admin boolean (si existe)
     attrs[:admin] = false if User.column_names.include?("admin")
 
-    # password_digest (si existe) => generamos digest válido si BCrypt está disponible
     if User.column_names.include?("password_digest")
       begin
         require "bcrypt"
@@ -31,19 +27,17 @@ module WawFactories
       end
     end
 
-    # Campos comunes (a veces required)
     attrs[:name] = "Test User" if User.column_names.include?("name")
     attrs[:username] = "testuser_#{SecureRandom.hex(4)}" if User.column_names.include?("username")
 
-    # ✅ Requisitos conocidos de tu modelo (por el error)
     if User.column_names.include?("birth_date")
       attrs[:birth_date] ||= Date.new(1990, 1, 1)
     end
+
     if User.column_names.include?("birth_country")
-      attrs[:birth_country] ||= "FR" # mínimo 2 chars
+      attrs[:birth_country] ||= "FR"
     end
 
-    # ✅ Hardening: autocompletar cualquier PresenceValidator que exista en User
     presence_attrs = User.validators.grep(ActiveModel::Validations::PresenceValidator)
                          .flat_map(&:attributes)
                          .map(&:to_s)
@@ -67,8 +61,6 @@ module WawFactories
         when :boolean
           false
         else
-          # strings/text/uuid/etc.
-          # mínimo 2 chars para evitar validaciones de length comunes
           "XX"
         end
     end
@@ -76,8 +68,8 @@ module WawFactories
     User.create!(attrs)
   end
 
-  def create_city!(user:, total_population: 200, workers_population: 120, free_population: 80)
-    City.create!(
+  def create_city!(user:, total_population: 200, workers_population: 120, free_population: 80, **attrs)
+    defaults = {
       user: user,
       total_population: total_population,
       free_population: free_population,
@@ -86,31 +78,47 @@ module WawFactories
       university_population: 0,
       laboratory_population: 0,
       food: 10_000,
-      wood: 10_000,
+      coal: 0,
+      iron_ore: 0,
       stone: 10_000,
-      money: 10_000,
+      wood: 10_000,
+      crude_oil: 0,
+      fuel: 0,
       energy: 0,
-      knowledge: 0
-    )
+      knowledge: 0,
+      money: 10_000
+    }
+
+    City.create!(defaults.merge(attrs))
   end
 
   def create_building!(key: "farm-#{SecureRandom.hex(3)}", rules: {})
+    normalized_rules =
+      if rules.is_a?(Hash) && rules.key?("levels")
+        rules
+      else
+        { "levels" => rules.transform_keys(&:to_s) }
+      end
+
     Building.create!(
       key: key,
       name: key.capitalize,
+      description: "",
+      image: "",
       infrastructure_cost: 0,
       has_hp: true,
-      rules: rules
+      rules: normalized_rules
     )
   end
 
-  def create_city_building!(city:, building:, level: 1, enabled: true, workers_assigned: 0)
+  def create_city_building!(city:, building:, level: 1, enabled: true, workers_assigned: 0, assigned_resource: nil)
     CityBuilding.create!(
       city: city,
       building: building,
       level: level,
       enabled: enabled,
-      workers_assigned: workers_assigned
+      workers_assigned: workers_assigned,
+      assigned_resource: assigned_resource
     )
   end
 end

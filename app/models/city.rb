@@ -15,7 +15,15 @@ class City < ApplicationRecord
   INFRASTRUCTURE_CAPACITY_PER_LEVEL = 500
   MAX_INFRASTRUCTURE_LEVEL = 10
 
-  # ✅ Phase 5 Step 2: storage
+  # ✅ Storage base del Hall
+  HALL_BASE_STORAGE = {
+    "food"     => 10_000,
+    "wood"     => 10_000,
+    "stone"    => 10_000,
+    "iron_ore" => 10_000
+  }.freeze
+
+  # ✅ Phase 5 Step 2 / Step 3: storage
   STORAGE_RULES = {
     "food"      => { building_key: "resource_depot", per_level: 10_000 },
     "coal"      => { building_key: "resource_depot", per_level: 10_000 },
@@ -71,20 +79,35 @@ class City < ApplicationRecord
     infrastructure_free >= building.infrastructure_cost_value
   end
 
-  # ✅ Phase 5 Step 2: capacidad máxima de storage por recurso
+  # ✅ Phase 5 Step 3 + Hall base storage
   def max_storage_for(resource)
-    rule = storage_rule_for(resource)
+    normalized = resource.to_s
+    rule = storage_rule_for(normalized)
 
-    total_levels = city_buildings
-      .joins(:building)
-      .where(buildings: { key: rule[:building_key] })
-      .sum(:level)
-      .to_i
+    hall_base = hall_base_storage_for(normalized)
 
-    total_levels * rule[:per_level]
+    total_levels =
+      case rule[:building_key]
+      when "resource_depot", "fluid_depot"
+        city_buildings
+          .joins(:building)
+          .where(buildings: { key: rule[:building_key] }, assigned_resource: normalized)
+          .sum(:level)
+          .to_i
+      when "library"
+        city_buildings
+          .joins(:building)
+          .where(buildings: { key: rule[:building_key] })
+          .sum(:level)
+          .to_i
+      else
+        0
+      end
+
+    hall_base + (total_levels * rule[:per_level])
   end
 
-  # ✅ Phase 5 Step 2: espacio libre restante para un recurso
+  # ✅ Phase 5 Step 2 / Step 3: espacio libre restante para un recurso
   def storage_free_for(resource)
     free = max_storage_for(resource) - current_resource_amount(resource)
     free.positive? ? free : 0
@@ -165,6 +188,18 @@ class City < ApplicationRecord
     raise ArgumentError, "Unsupported storage resource: #{normalized}" if rule.nil?
 
     rule
+  end
+
+  def hall_base_storage_for(resource)
+    normalized = resource.to_s
+    return 0 unless HALL_BASE_STORAGE.key?(normalized)
+
+    hall_exists = city_buildings
+                    .joins(:building)
+                    .where(buildings: { key: "hall" })
+                    .exists?
+
+    hall_exists ? HALL_BASE_STORAGE[normalized] : 0
   end
 
   def current_resource_amount(resource)

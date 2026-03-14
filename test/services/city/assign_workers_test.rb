@@ -6,7 +6,14 @@ class City::AssignWorkersTest < ActiveSupport::TestCase
   test "rejects negative workers" do
     user = create_user!
     city = create_city!(user: user)
-    b = create_building!(rules: { "1" => { "workers_required" => 10 } })
+
+    b = create_building!(
+      rules: {
+        "levels" => {
+          "1" => { "workers_required" => 10 }
+        }
+      }
+    )
     cb = create_city_building!(city: city, building: b, workers_assigned: 0)
 
     assert_no_difference "LedgerEvent.count" do
@@ -25,7 +32,14 @@ class City::AssignWorkersTest < ActiveSupport::TestCase
   test "rejects workers above workers_required" do
     user = create_user!
     city = create_city!(user: user)
-    b = create_building!(rules: { "1" => { "workers_required" => 10 } })
+
+    b = create_building!(
+      rules: {
+        "levels" => {
+          "1" => { "workers_required" => 10 }
+        }
+      }
+    )
     cb = create_city_building!(city: city, building: b, workers_assigned: 0)
 
     assert_no_difference "LedgerEvent.count" do
@@ -45,8 +59,23 @@ class City::AssignWorkersTest < ActiveSupport::TestCase
     user = create_user!
     city = create_city!(user: user, total_population: 20, workers_population: 10, free_population: 10)
 
-    b1 = create_building!(rules: { "1" => { "workers_required" => 10 } })
-    b2 = create_building!(rules: { "1" => { "workers_required" => 10 } })
+    b1 = create_building!(
+      key: "building_a",
+      rules: {
+        "levels" => {
+          "1" => { "workers_required" => 10 }
+        }
+      }
+    )
+    b2 = create_building!(
+      key: "building_b",
+      rules: {
+        "levels" => {
+          "1" => { "workers_required" => 10 }
+        }
+      }
+    )
+
     cb1 = create_city_building!(city: city, building: b1, workers_assigned: 0)
     cb2 = create_city_building!(city: city, building: b2, workers_assigned: 0)
 
@@ -88,7 +117,13 @@ class City::AssignWorkersTest < ActiveSupport::TestCase
     attacker = create_user!(email: "attacker@example.com")
 
     victim_city = create_city!(user: owner)
-    b = create_building!(rules: { "1" => { "workers_required" => 10 } })
+    b = create_building!(
+      rules: {
+        "levels" => {
+          "1" => { "workers_required" => 10 }
+        }
+      }
+    )
     cb = create_city_building!(city: victim_city, building: b)
 
     assert_no_difference "LedgerEvent.count" do
@@ -107,7 +142,14 @@ class City::AssignWorkersTest < ActiveSupport::TestCase
   test "creates ledger event for valid assignment" do
     user = create_user!
     city = create_city!(user: user, total_population: 20, workers_population: 10, free_population: 10)
-    b = create_building!(rules: { "1" => { "workers_required" => 10 } })
+
+    b = create_building!(
+      rules: {
+        "levels" => {
+          "1" => { "workers_required" => 10 }
+        }
+      }
+    )
     cb = create_city_building!(city: city, building: b, workers_assigned: 0)
 
     assert_difference "LedgerEvent.count", 1 do
@@ -138,31 +180,50 @@ class City::AssignWorkersTest < ActiveSupport::TestCase
     user = create_user!
     city = create_city!(user: user, total_population: 20, workers_population: 10, free_population: 10)
 
-    b1 = create_building!(rules: { "1" => { "workers_required" => 10 } })
-    b2 = create_building!(rules: { "1" => { "workers_required" => 10 } })
+    b1 = create_building!(
+      key: "race_building_a",
+      rules: {
+        "levels" => {
+          "1" => { "workers_required" => 10 }
+        }
+      }
+    )
+    b2 = create_building!(
+      key: "race_building_b",
+      rules: {
+        "levels" => {
+          "1" => { "workers_required" => 10 }
+        }
+      }
+    )
+
     cb1 = create_city_building!(city: city, building: b1)
     cb2 = create_city_building!(city: city, building: b2)
 
     results = []
+    mutex = Mutex.new
+
     threads = [
       Thread.new do
         ActiveRecord::Base.connection_pool.with_connection do
-          results << City::AssignWorkers.call(
+          result = City::AssignWorkers.call(
             user: user,
             city: city,
             city_building_id: cb1.id,
             workers_assigned: 10
           )
+          mutex.synchronize { results << result }
         end
       end,
       Thread.new do
         ActiveRecord::Base.connection_pool.with_connection do
-          results << City::AssignWorkers.call(
+          result = City::AssignWorkers.call(
             user: user,
             city: city,
             city_building_id: cb2.id,
             workers_assigned: 10
           )
+          mutex.synchronize { results << result }
         end
       end
     ]

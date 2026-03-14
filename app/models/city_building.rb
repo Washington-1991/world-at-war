@@ -2,6 +2,35 @@ class CityBuilding < ApplicationRecord
   belongs_to :city
   belongs_to :building
 
+  SOLID_STORAGE_RESOURCES = %w[
+    food
+    coal
+    iron_ore
+    stone
+    wood
+  ].freeze
+
+  FLUID_STORAGE_RESOURCES = %w[
+    crude_oil
+    fuel
+  ].freeze
+
+  RESOURCE_DEPOT_IDENTIFIERS = %w[
+    resource_depot
+    resource depot
+    resource-depot
+    resourcedepot
+  ].freeze
+
+  FLUID_DEPOT_IDENTIFIERS = %w[
+    fluid_depot
+    fluid depot
+    fluid-depot
+    fluiddepot
+  ].freeze
+
+  before_validation :normalize_assigned_resource
+
   # Solo el Hall es único por ciudad.
   # El resto de edificios son stackable.
   validate :hall_must_be_unique_per_city
@@ -20,6 +49,9 @@ class CityBuilding < ApplicationRecord
   # Impide que workers_assigned supere workers_required definido en Building.rules[level]
   validate :workers_assigned_cannot_exceed_required
 
+  # ✅ Phase 5 Step 3: assigned storage validation
+  validate :assigned_resource_must_match_building_type
+
   # Helper usado por el service y por esta validación
   def workers_required
     return 0 if building.nil? || level.nil?
@@ -29,20 +61,45 @@ class CityBuilding < ApplicationRecord
   # Detecta si este CityBuilding corresponde al Hall.
   # Se intenta de forma flexible para adaptarse al schema actual.
   def hall_building?
-    return false if building.nil?
+    normalized_building_identifiers.include?("hall")
+  end
 
-    candidates = []
+  def resource_depot_building?
+    (normalized_building_identifiers & RESOURCE_DEPOT_IDENTIFIERS).any?
+  end
 
-    candidates << building.try(:key)
-    candidates << building.try(:code)
-    candidates << building.try(:slug)
-    candidates << building.try(:kind)
-    candidates << building.try(:name)
+  def fluid_depot_building?
+    (normalized_building_identifiers & FLUID_DEPOT_IDENTIFIERS).any?
+  end
 
-    candidates.compact.any? { |value| value.to_s.strip.downcase == "hall" }
+  def assignable_storage_building?
+    resource_depot_building? || fluid_depot_building?
+  end
+
+  def allowed_assigned_resources
+    return SOLID_STORAGE_RESOURCES if resource_depot_building?
+    return FLUID_STORAGE_RESOURCES if fluid_depot_building?
+
+    []
   end
 
   private
+
+  def normalize_assigned_resource
+    self.assigned_resource = assigned_resource.to_s.strip.downcase.presence
+  end
+
+  def normalized_building_identifiers
+    return [] if building.nil?
+
+    [
+      building.try(:key),
+      building.try(:code),
+      building.try(:slug),
+      building.try(:kind),
+      building.try(:name)
+    ].compact.map { |value| value.to_s.strip.downcase }
+  end
 
   def hall_must_be_unique_per_city
     return unless city.present? && building.present?
@@ -72,5 +129,29 @@ class CityBuilding < ApplicationRecord
     return if workers_assigned <= required
 
     errors.add(:workers_assigned, "cannot exceed workers_required (#{required}) for this level")
+  end
+
+  def assigned_resource_must_match_building_type
+    return if building.nil?
+
+    if resource_depot_building?
+      return if assigned_resource.nil?
+      return if SOLID_STORAGE_RESOURCES.include?(assigned_resource)
+
+      errors.add(:assigned_resource, "is not compatible with resource_depot")
+      return
+    end
+
+    if fluid_depot_building?
+      return if assigned_resource.nil?
+      return if FLUID_STORAGE_RESOURCES.include?(assigned_resource)
+
+      errors.add(:assigned_resource, "is not compatible with fluid_depot")
+      return
+    end
+
+    if assigned_resource.present?
+      errors.add(:assigned_resource, "must be nil for non-storage buildings")
+    end
   end
 end

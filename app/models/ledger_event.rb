@@ -2,6 +2,7 @@ class LedgerEvent < ApplicationRecord
   ACTION_TYPES = %w[
     tick
     assign_workers
+    assign_storage
     build
     upgrade
     admin_adjustment

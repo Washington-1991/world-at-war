@@ -106,13 +106,14 @@ class CityBuildBuildingTest < ActiveSupport::TestCase
     assert_equal 0, city.ledger_events.count
   end
 
-  test "raises when building already exists in the city" do
+  test "raises when hall already exists in the city" do
     user = create_user!
     city = create_city!(user: user)
+    city.update!(wood: 100, stone: 100, money: 100)
 
     building = Building.create!(
-      key: "unique_building",
-      name: "Unique Building",
+      key: "hall",
+      name: "Hall",
       description: "",
       image: "",
       infrastructure_cost: 8,
@@ -144,7 +145,57 @@ class CityBuildBuildingTest < ActiveSupport::TestCase
       City::BuildBuilding.new(city: city, building_key: building.key).call
     end
 
+    assert_equal 1, city.city_buildings.count
     assert_equal 0, city.ledger_events.count
+  end
+
+  test "allows building another instance of a repeatable building" do
+    user = create_user!
+    city = create_city!(user: user)
+    city.update!(wood: 100, stone: 100, money: 100)
+
+    building = Building.create!(
+      key: "repeatable_mine",
+      name: "Repeatable Mine",
+      description: "",
+      image: "",
+      infrastructure_cost: 8,
+      has_hp: true,
+      rules: {
+        "levels" => {
+          "1" => {
+            "hp_base" => 150,
+            "workers_required" => 100,
+            "build_cost" => {
+              "wood" => 10,
+              "stone" => 5
+            }
+          }
+        }
+      }
+    )
+
+    CityBuilding.create!(
+      city: city,
+      building: building,
+      level: 1,
+      workers_assigned: 0,
+      enabled: true,
+      hp: 150,
+      max_hp: 150
+    )
+
+    assert_difference -> { city.city_buildings.count }, +1 do
+      assert_difference -> { city.ledger_events.count }, +1 do
+        City::BuildBuilding.new(city: city, building_key: building.key, actor_user: user).call
+      end
+    end
+
+    city.reload
+
+    assert_equal 2, city.city_buildings.where(building_id: building.id).count
+    assert_equal 90, city.wood
+    assert_equal 95, city.stone
   end
 
   test "raises when resources are insufficient" do

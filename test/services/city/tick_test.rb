@@ -28,7 +28,7 @@ class CityTickTest < ActiveSupport::TestCase
     snapshot = city.reload.attributes.slice("food", "money", "total_population", "free_population", "workers_population")
 
     assert_no_difference "LedgerEvent.count" do
-      city.tick!(now: now) # 0 horas
+      city.tick!(now: now)
     end
 
     snapshot2 = city.reload.attributes.slice("food", "money", "total_population", "free_population", "workers_population")
@@ -39,6 +39,8 @@ class CityTickTest < ActiveSupport::TestCase
   test "tick caps catch-up to 72h and advances last_tick_at by processed hours" do
     user = create_user!
     city = create_city!(user: user)
+
+    create_hall_for!(city)
 
     start = Time.current - 100.hours
     now = Time.current
@@ -52,13 +54,8 @@ class CityTickTest < ActiveSupport::TestCase
 
     city.reload
 
-    # last_tick_at avanza 72h, no a now
     assert_equal (start + 72.hours).to_i, city.last_tick_at.to_i
-
-    # crecimiento aplicado por 72 horas
     assert_equal before_pop + (72 * City::Tick::BASE_POP_GROWTH_PER_HOUR), city.total_population
-
-    # balance poblacional se mantiene
     assert_equal city.total_population, city.population_breakdown_sum
 
     event = LedgerEvent.order(created_at: :desc).first
@@ -73,6 +70,8 @@ class CityTickTest < ActiveSupport::TestCase
   test "tick is idempotent when called twice with the same now" do
     user = create_user!
     city = create_city!(user: user)
+
+    create_hall_for!(city)
 
     now = Time.current
     city.update!(last_tick_at: now - 2.hours)
@@ -104,20 +103,26 @@ class CityTickTest < ActiveSupport::TestCase
     user = create_user!
     city = create_city!(user: user)
 
+    create_hall_for!(city)
+    create_assigned_resource_depot_for!(city, resource: "food", level: 1)
+
     now = Time.current
     city.update!(last_tick_at: now - 1.hour)
 
     building = create_building!(
       rules: {
-        "1" => {
-          "workers_required" => 10,
-          "outputs" => { "food" => 100 },
-          "inputs" => {},
-          "maintenance" => {},
-          "energy" => 0
+        "levels" => {
+          "1" => {
+            "workers_required" => 10,
+            "outputs" => { "food" => 100 },
+            "inputs" => {},
+            "maintenance" => {},
+            "energy" => 0
+          }
         }
       }
     )
+
     create_city_building!(city: city, building: building, level: 1, enabled: true, workers_assigned: 10)
 
     city.reload
@@ -125,8 +130,6 @@ class CityTickTest < ActiveSupport::TestCase
     before_pop  = city.total_population
     hours = 1
 
-    # Consumo esperado según la implementación actual:
-    # primero crece población y luego consume usando el total_population ya crecido
     pop_after_growth = before_pop + (hours * City::Tick::BASE_POP_GROWTH_PER_HOUR)
     civil = ((pop_after_growth * hours) + (City::Tick::CIVIL_DENOM / 2)) / City::Tick::CIVIL_DENOM
     military = ((city.military_population * hours) + (City::Tick::MILITARY_DENOM / 2)) / City::Tick::MILITARY_DENOM
@@ -154,17 +157,22 @@ class CityTickTest < ActiveSupport::TestCase
     user = create_user!
     city = create_city!(user: user)
 
+    create_hall_for!(city)
+
     now = Time.current
     city.update!(last_tick_at: now - 1.hour)
 
     building = create_building!(
       rules: {
-        "1" => {
-          "workers_required" => 10,
-          "outputs" => { "food" => 100 }
+        "levels" => {
+          "1" => {
+            "workers_required" => 10,
+            "outputs" => { "food" => 100 }
+          }
         }
       }
     )
+
     create_city_building!(city: city, building: building, level: 1, enabled: true, workers_assigned: 0)
 
     city.reload
@@ -194,7 +202,9 @@ class CityTickTest < ActiveSupport::TestCase
 
   test "food never goes negative (anti-underflow)" do
     user = create_user!
-    city = create_city!(user: user)
+    city = create_city!(user: user, food: 0)
+
+    create_hall_for!(city)
 
     now = Time.current
     city.update!(last_tick_at: now - 10.hours, food: 0)
@@ -206,5 +216,58 @@ class CityTickTest < ActiveSupport::TestCase
     city.reload
 
     assert city.food >= 0
+  end
+
+  private
+
+  def create_hall_for!(city, level: 1)
+    hall = Building.find_or_create_by!(key: "hall") do |building|
+      building.name = "Hall"
+      building.description = ""
+      building.image = ""
+      building.infrastructure_cost = 0
+      building.has_hp = true
+      building.rules = {
+        "levels" => {
+          "1" => {
+            "workers_required" => 0
+          }
+        }
+      }
+    end
+
+    create_city_building!(
+      city: city,
+      building: hall,
+      level: level,
+      enabled: true,
+      workers_assigned: 0
+    )
+  end
+
+  def create_assigned_resource_depot_for!(city, resource:, level: 1)
+    depot_building = Building.find_or_create_by!(key: "resource_depot") do |building|
+      building.name = "Resource Depot"
+      building.description = ""
+      building.image = ""
+      building.infrastructure_cost = 0
+      building.has_hp = true
+      building.rules = {
+        "levels" => {
+          "1" => {
+            "workers_required" => 0
+          }
+        }
+      }
+    end
+
+    create_city_building!(
+      city: city,
+      building: depot_building,
+      level: level,
+      enabled: true,
+      workers_assigned: 0,
+      assigned_resource: resource
+    )
   end
 end

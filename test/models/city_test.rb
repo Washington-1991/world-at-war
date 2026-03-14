@@ -8,12 +8,18 @@ class CityTest < ActiveSupport::TestCase
     assert city.valid?, city.errors.full_messages.to_sentence
 
     assert_equal 10_000, city.total_population
-    assert_equal 10_000, city.free_population
+    assert_equal 6_000, city.workers_population
+    assert_equal 4_000, city.free_population
+    assert_equal 0, city.military_population
+    assert_equal 0, city.university_population
+    assert_equal 0, city.laboratory_population
 
     assert_equal 10_000, city.food
     assert_equal 10_000, city.wood
     assert_equal 10_000, city.stone
     assert_equal 10_000, city.money
+
+    assert_equal 0, city.infrastructure_level
   end
 
   test "does not override manually provided resource values" do
@@ -23,12 +29,18 @@ class CityTest < ActiveSupport::TestCase
     assert city.valid?, city.errors.full_messages.to_sentence
 
     assert_equal 10_000, city.total_population
-    assert_equal 10_000, city.free_population
+    assert_equal 6_000, city.workers_population
+    assert_equal 4_000, city.free_population
+    assert_equal 0, city.military_population
+    assert_equal 0, city.university_population
+    assert_equal 0, city.laboratory_population
 
     assert_equal 50_000, city.food
     assert_equal 10_000, city.wood
     assert_equal 10_000, city.stone
     assert_equal 10_000, city.money
+
+    assert_equal 0, city.infrastructure_level
   end
 
   test "is valid when population balances" do
@@ -36,7 +48,11 @@ class CityTest < ActiveSupport::TestCase
 
     city = user.cities.new(
       total_population: 10,
-      free_population: 10,
+      free_population: 4,
+      workers_population: 6,
+      military_population: 0,
+      university_population: 0,
+      laboratory_population: 0,
       food: 0, wood: 0, stone: 0, money: 0
     )
 
@@ -48,7 +64,11 @@ class CityTest < ActiveSupport::TestCase
 
     city = user.cities.new(
       total_population: 11,
-      free_population: 10,
+      free_population: 4,
+      workers_population: 6,
+      military_population: 0,
+      university_population: 0,
+      laboratory_population: 0,
       food: 0, wood: 0, stone: 0, money: 0
     )
 
