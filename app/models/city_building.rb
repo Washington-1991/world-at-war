@@ -15,6 +15,14 @@ class CityBuilding < ApplicationRecord
     fuel
   ].freeze
 
+  HALL_IDENTIFIERS = %w[
+    hall
+    town_hall
+    townhall
+    town-hall
+    town hall
+  ].freeze
+
   RESOURCE_DEPOT_IDENTIFIERS = %w[
     resource_depot
     resource depot
@@ -27,6 +35,13 @@ class CityBuilding < ApplicationRecord
     fluid depot
     fluid-depot
     fluiddepot
+  ].freeze
+
+  LOGISTIC_STATION_IDENTIFIERS = %w[
+    logistic_station
+    logistic station
+    logistic-station
+    logisticstation
   ].freeze
 
   before_validation :normalize_assigned_resource
@@ -58,10 +73,16 @@ class CityBuilding < ApplicationRecord
     building.workers_required_for(level).to_i
   end
 
-  # Detecta si este CityBuilding corresponde al Hall.
-  # Se intenta de forma flexible para adaptarse al schema actual.
+  def trucks_capacity
+    return 0 unless enabled?
+    return 0 unless logistic_station_building?
+    return 0 if building.nil? || level.nil?
+
+    building.trucks_capacity_for(level).to_i
+  end
+
   def hall_building?
-    normalized_building_identifiers.include?("hall")
+    (normalized_building_identifiers & HALL_IDENTIFIERS).any?
   end
 
   def resource_depot_building?
@@ -70,6 +91,10 @@ class CityBuilding < ApplicationRecord
 
   def fluid_depot_building?
     (normalized_building_identifiers & FLUID_DEPOT_IDENTIFIERS).any?
+  end
+
+  def logistic_station_building?
+    (normalized_building_identifiers & LOGISTIC_STATION_IDENTIFIERS).any?
   end
 
   def assignable_storage_building?

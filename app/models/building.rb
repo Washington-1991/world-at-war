@@ -17,7 +17,8 @@ class Building < ApplicationRecord
   #       "outputs" => {...},
   #       "inputs" => {...},
   #       "maintenance" => {...},
-  #       "energy" => 0
+  #       "energy" => 0,
+  #       "trucks_capacity" => 100
   #     },
   #     "2" => { ... }
   #   }
@@ -38,6 +39,10 @@ class Building < ApplicationRecord
 
   def build_cost_for(level)
     rules_for(level).fetch("build_cost", {}).transform_keys(&:to_s)
+  end
+
+  def trucks_capacity_for(level)
+    rules_for(level).fetch("trucks_capacity", 0).to_i
   end
 
   def infrastructure_cost_value

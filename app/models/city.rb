@@ -3,6 +3,18 @@ class City < ApplicationRecord
   has_many :city_buildings, dependent: :destroy
   has_many :ledger_events, dependent: :destroy
 
+  has_many :outgoing_logistic_operations,
+           class_name: "LogisticOperation",
+           foreign_key: :origin_city_id,
+           inverse_of: :origin_city,
+           dependent: :destroy
+
+  has_many :incoming_logistic_operations,
+           class_name: "LogisticOperation",
+           foreign_key: :destination_city_id,
+           inverse_of: :destination_city,
+           dependent: :destroy
+
   INITIAL_POPULATION = 10_000
   STARTER_PACK       = 10_000
 
@@ -14,6 +26,8 @@ class City < ApplicationRecord
   BASE_INFRASTRUCTURE_CAPACITY = 500
   INFRASTRUCTURE_CAPACITY_PER_LEVEL = 500
   MAX_INFRASTRUCTURE_LEVEL = 10
+
+  HALL_BUILDING_KEYS = %w[hall town_hall].freeze
 
   # ✅ Storage base del Hall
   HALL_BASE_STORAGE = {
@@ -77,6 +91,24 @@ class City < ApplicationRecord
 
   def enough_infrastructure_for?(building)
     infrastructure_free >= building.infrastructure_cost_value
+  end
+
+  # ✅ Paso 2 — Capacidad logística server-authoritative
+  def total_trucks_capacity
+    city_buildings.includes(:building).sum(&:trucks_capacity)
+  end
+
+  def occupied_trucks_capacity
+    outgoing_logistic_operations.active.sum(:trucks_assigned).to_i
+  end
+
+  def available_trucks_capacity
+    free = total_trucks_capacity - occupied_trucks_capacity
+    free.positive? ? free : 0
+  end
+
+  def enough_trucks_for?(requested_trucks)
+    available_trucks_capacity >= requested_trucks.to_i
   end
 
   # ✅ Phase 5 Step 3 + Hall base storage
@@ -196,7 +228,7 @@ class City < ApplicationRecord
 
     hall_exists = city_buildings
                     .joins(:building)
-                    .where(buildings: { key: "hall" })
+                    .where(buildings: { key: HALL_BUILDING_KEYS })
                     .exists?
 
     hall_exists ? HALL_BASE_STORAGE[normalized] : 0

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_03_13_102113) do
+ActiveRecord::Schema[7.2].define(version: 2026_03_14_212522) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pgcrypto"
@@ -51,6 +51,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_13_102113) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.integer "infrastructure_level", default: 0, null: false
+    t.integer "x", default: 0, null: false
+    t.integer "y", default: 0, null: false
     t.index ["user_id"], name: "index_cities_on_user_id"
   end
 
@@ -84,6 +86,34 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_13_102113) do
     t.index ["created_at"], name: "index_ledger_events_on_created_at"
   end
 
+  create_table "logistic_operations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "origin_city_id", null: false
+    t.uuid "destination_city_id", null: false
+    t.string "resource", null: false
+    t.integer "amount", null: false
+    t.integer "trucks_assigned", null: false
+    t.decimal "distance_km", precision: 10, scale: 2, null: false
+    t.integer "fuel_cost", null: false
+    t.datetime "started_at", precision: nil, null: false
+    t.datetime "arrival_at", precision: nil, null: false
+    t.string "status", null: false
+    t.datetime "created_at", precision: nil, null: false
+    t.datetime "updated_at", precision: nil, null: false
+    t.index ["arrival_at"], name: "index_logistic_operations_on_arrival_at"
+    t.index ["destination_city_id"], name: "index_logistic_operations_on_destination_city_id"
+    t.index ["origin_city_id"], name: "index_logistic_operations_on_origin_city_id"
+    t.index ["status", "arrival_at"], name: "index_logistic_operations_on_status_and_arrival_at"
+    t.index ["status"], name: "index_logistic_operations_on_status"
+    t.check_constraint "amount > 0", name: "logistic_operations_amount_positive"
+    t.check_constraint "arrival_at > started_at", name: "logistic_operations_arrival_after_start"
+    t.check_constraint "char_length(resource::text) > 0", name: "logistic_operations_resource_not_blank"
+    t.check_constraint "distance_km >= 0::numeric", name: "logistic_operations_distance_km_non_negative"
+    t.check_constraint "fuel_cost >= 0", name: "logistic_operations_fuel_cost_non_negative"
+    t.check_constraint "origin_city_id <> destination_city_id", name: "logistic_operations_different_cities"
+    t.check_constraint "status::text = ANY (ARRAY['loading'::character varying, 'in_transit'::character varying, 'completed'::character varying, 'cancelled'::character varying]::text[])", name: "logistic_operations_valid_status"
+    t.check_constraint "trucks_assigned > 0", name: "logistic_operations_trucks_assigned_positive"
+  end
+
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "name", null: false
     t.date "birth_date", null: false
@@ -101,4 +131,6 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_13_102113) do
   add_foreign_key "city_buildings", "cities"
   add_foreign_key "ledger_events", "cities"
   add_foreign_key "ledger_events", "users", column: "actor_user_id"
+  add_foreign_key "logistic_operations", "cities", column: "destination_city_id", name: "fk_logistic_operations_destination_city"
+  add_foreign_key "logistic_operations", "cities", column: "origin_city_id", name: "fk_logistic_operations_origin_city"
 end

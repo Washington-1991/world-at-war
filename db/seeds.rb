@@ -244,6 +244,22 @@ buildings = [
     }
   },
   {
+    key: "logistic_station",
+    name: "Logistic Station",
+    infrastructure_cost: 6,
+    has_hp: true,
+    rules: {
+      levels: {
+        "1" => {
+          hp_base: 140,
+          workers_required: 20,
+          build_cost: { wood: 50, stone: 45, money: 40 },
+          trucks_capacity: 100
+        }
+      }
+    }
+  },
+  {
     key: "vehicle_hangar",
     name: "Vehicle Hangar",
     infrastructure_cost: 10,
