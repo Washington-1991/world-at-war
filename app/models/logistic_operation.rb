@@ -59,6 +59,7 @@ class LogisticOperation < ApplicationRecord
 
   validate :cities_must_be_different
   validate :arrival_must_be_after_start
+  validate :completed_at_must_match_status
 
   # Compatibilidad legacy
   def resource_key
@@ -93,14 +94,6 @@ class LogisticOperation < ApplicationRecord
     self.distance_km = value
   end
 
-  def completed_at
-    @completed_at
-  end
-
-  def completed_at=(value)
-    @completed_at = value
-  end
-
   private
 
   def normalize_resource
@@ -128,5 +121,13 @@ class LogisticOperation < ApplicationRecord
     return if arrival_at > started_at
 
     errors.add(:arrival_at, "must be after started_at")
+  end
+
+  def completed_at_must_match_status
+    if completed?
+      errors.add(:completed_at, "must be present when status is completed") if completed_at.blank?
+    else
+      errors.add(:completed_at, "must be blank unless status is completed") if completed_at.present?
+    end
   end
 end

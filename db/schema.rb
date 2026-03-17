@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_03_14_212522) do
+ActiveRecord::Schema[7.2].define(version: 2026_03_15_212121) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pgcrypto"
@@ -99,6 +99,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_14_212522) do
     t.string "status", null: false
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
+    t.datetime "completed_at"
     t.index ["arrival_at"], name: "index_logistic_operations_on_arrival_at"
     t.index ["destination_city_id"], name: "index_logistic_operations_on_destination_city_id"
     t.index ["origin_city_id"], name: "index_logistic_operations_on_origin_city_id"
@@ -110,6 +111,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_14_212522) do
     t.check_constraint "distance_km >= 0::numeric", name: "logistic_operations_distance_km_non_negative"
     t.check_constraint "fuel_cost >= 0", name: "logistic_operations_fuel_cost_non_negative"
     t.check_constraint "origin_city_id <> destination_city_id", name: "logistic_operations_different_cities"
+    t.check_constraint "status::text = 'completed'::text AND completed_at IS NOT NULL OR status::text <> 'completed'::text AND completed_at IS NULL", name: "logistic_operations_completed_at_matches_status"
     t.check_constraint "status::text = ANY (ARRAY['loading'::character varying, 'in_transit'::character varying, 'completed'::character varying, 'cancelled'::character varying]::text[])", name: "logistic_operations_valid_status"
     t.check_constraint "trucks_assigned > 0", name: "logistic_operations_trucks_assigned_positive"
   end
