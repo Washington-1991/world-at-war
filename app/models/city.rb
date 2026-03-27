@@ -2,6 +2,8 @@ class City < ApplicationRecord
   belongs_to :user
   has_many :city_buildings, dependent: :destroy
   has_many :ledger_events, dependent: :destroy
+  has_many :city_logistic_stocks, dependent: :destroy
+  has_many :city_stored_goods, dependent: :destroy
 
   has_many :outgoing_logistic_operations,
            class_name: "LogisticOperation",
@@ -18,35 +20,26 @@ class City < ApplicationRecord
   INITIAL_POPULATION = 10_000
   STARTER_PACK       = 10_000
 
-  # ✅ Paso 3: Regla determinística de workforce (sin floats)
   WORKFORCE_RATE_NUM = 60
   WORKFORCE_RATE_DEN = 100
 
-  # ✅ Phase 5: infraestructura
   BASE_INFRASTRUCTURE_CAPACITY = 500
   INFRASTRUCTURE_CAPACITY_PER_LEVEL = 500
   MAX_INFRASTRUCTURE_LEVEL = 10
 
+  LOGISTIC_STATION_BUILDING_KEYS = %w[logistic_station].freeze
+  LOGISTIC_CAPACITY_PER_LEVEL = 10_000
+
+  DEPOSIT_BUILDING_KEYS = %w[resource_depot deposit].freeze
+  FLUID_DEPOSIT_BUILDING_KEYS = %w[fluid_depot fluid_deposit].freeze
+
   HALL_BUILDING_KEYS = %w[hall town_hall].freeze
 
-  # ✅ Storage base del Hall
   HALL_BASE_STORAGE = {
     "food"     => 10_000,
     "wood"     => 10_000,
     "stone"    => 10_000,
     "iron_ore" => 10_000
-  }.freeze
-
-  # ✅ Phase 5 Step 2 / Step 3: storage
-  STORAGE_RULES = {
-    "food"      => { building_key: "resource_depot", per_level: 10_000 },
-    "coal"      => { building_key: "resource_depot", per_level: 10_000 },
-    "iron_ore"  => { building_key: "resource_depot", per_level: 10_000 },
-    "stone"     => { building_key: "resource_depot", per_level: 10_000 },
-    "wood"      => { building_key: "resource_depot", per_level: 10_000 },
-    "crude_oil" => { building_key: "fluid_depot",    per_level: 10_000 },
-    "fuel"      => { building_key: "fluid_depot",    per_level: 10_000 },
-    "knowledge" => { building_key: "library",        per_level: 5_000 }
   }.freeze
 
   before_validation :set_initial_state, on: :create
@@ -93,7 +86,6 @@ class City < ApplicationRecord
     infrastructure_free >= building.infrastructure_cost_value
   end
 
-  # ✅ Paso 2 — Capacidad logística server-authoritative
   def total_trucks_capacity
     city_buildings.includes(:building).sum(&:trucks_capacity)
   end
@@ -111,38 +103,126 @@ class City < ApplicationRecord
     available_trucks_capacity >= requested_trucks.to_i
   end
 
-  # ✅ Phase 5 Step 3 + Hall base storage
-  def max_storage_for(resource)
-    normalized = resource.to_s
-    rule = storage_rule_for(normalized)
-
-    hall_base = hall_base_storage_for(normalized)
-
-    total_levels =
-      case rule[:building_key]
-      when "resource_depot", "fluid_depot"
-        city_buildings
-          .joins(:building)
-          .where(buildings: { key: rule[:building_key] }, assigned_resource: normalized)
-          .sum(:level)
-          .to_i
-      when "library"
-        city_buildings
-          .joins(:building)
-          .where(buildings: { key: rule[:building_key] })
-          .sum(:level)
-          .to_i
-      else
-        0
-      end
-
-    hall_base + (total_levels * rule[:per_level])
+  def logistic_station_level
+    city_buildings
+      .joins(:building)
+      .where(buildings: { key: LOGISTIC_STATION_BUILDING_KEYS })
+      .sum(:level)
+      .to_i
   end
 
-  # ✅ Phase 5 Step 2 / Step 3: espacio libre restante para un recurso
-  def storage_free_for(resource)
-    free = max_storage_for(resource) - current_resource_amount(resource)
+  def logistic_capacity_for(good_key)
+    normalize_good_key!(good_key)
+    logistic_station_level * LOGISTIC_CAPACITY_PER_LEVEL
+  end
+
+  def logistic_stock_for(good_key)
+    normalized = normalize_good_key!(good_key)
+    city_logistic_stocks.find_by(good_key: normalized)&.amount.to_i
+  end
+
+  def logistic_free_for(good_key)
+    free = logistic_capacity_for(good_key) - logistic_stock_for(good_key)
     free.positive? ? free : 0
+  end
+
+  def enough_logistic_capacity_for?(good_key, amount)
+    logistic_free_for(good_key) >= amount.to_i
+  end
+
+  # Stock utilizable/operativo. No incluye buffer en logistic_station.
+  def available_good_amount(good_key)
+    stored_amount_for(good_key)
+  end
+
+  def max_storage_for(resource)
+    normalized = resource.to_s.strip.downcase
+
+    if normalized == "knowledge"
+      library_levels = city_buildings
+                         .joins(:building)
+                         .where(buildings: { key: "library" })
+                         .sum(:level)
+                         .to_i
+
+      return library_levels * 5_000
+    end
+
+    normalize_good_key!(normalized)
+
+    hall_base = hall_base_storage_for(normalized)
+    building_keys = storage_building_keys_for!(normalized)
+
+    total_levels = city_buildings
+                     .joins(:building)
+                     .where(buildings: { key: building_keys }, assigned_resource: normalized)
+                     .sum(:level)
+                     .to_i
+
+    hall_base + (total_levels * 10_000)
+  end
+
+  def storage_free_for(resource)
+    free = max_storage_for(resource) - stored_amount_for(resource)
+    free.positive? ? free : 0
+  end
+
+  def remove_available_good!(good_key, amount)
+    normalized = normalize_good_key!(good_key)
+    requested = amount.to_i
+
+    raise ArgumentError, "amount must be greater than 0" unless requested.positive?
+
+    current = stored_amount_for(normalized)
+    raise ArgumentError, "insufficient available good: #{normalized}" if current < requested
+
+    decrease_final_stored_good!(normalized, requested)
+  end
+
+  def receive_good_into_logistics!(good_key, amount)
+    normalized = normalize_good_key!(good_key)
+    received = amount.to_i
+
+    raise ArgumentError, "amount must be greater than 0" unless received.positive?
+    raise ArgumentError, "insufficient free logistic capacity for #{normalized}" unless enough_logistic_capacity_for?(normalized, received)
+
+    stock = find_or_initialize_logistic_stock_record(normalized)
+    stock.amount = stock.amount.to_i + received
+    stock.save!
+
+    unloaded_amount = transfer_logistic_good_to_storage!(normalized)
+
+    {
+      received_amount: received,
+      unloaded_amount: unloaded_amount,
+      remaining_in_logistics: logistic_stock_for(normalized)
+    }
+  end
+
+  def flush_logistic_goods_to_storage!
+    city_logistic_stocks.each_with_object({}) do |stock, moved|
+      amount = transfer_logistic_good_to_storage!(stock.good_key)
+      moved[stock.good_key] = amount if amount.positive?
+    end
+  end
+
+  def transfer_logistic_good_to_storage!(good_key)
+    normalized = normalize_good_key!(good_key)
+
+    stock = find_or_initialize_logistic_stock_record(normalized)
+    pending = stock.amount.to_i
+    return 0 if pending <= 0
+
+    free_storage = storage_free_for(normalized)
+    move_amount = [ pending, free_storage ].min
+    return 0 if move_amount <= 0
+
+    increase_final_stored_good!(normalized, move_amount)
+
+    stock.amount = pending - move_amount
+    stock.save!
+
+    move_amount
   end
 
   def population_breakdown_sum
@@ -150,8 +230,6 @@ class City < ApplicationRecord
       university_population + laboratory_population
   end
 
-  # ✅ Paso 3: calcula la capacidad de workforce desde población (server-authoritative)
-  # Nota: excluimos poblaciones "especiales" para evitar free negativo.
   def compute_workers_population(total_pop = total_population)
     total = total_pop.to_i
 
@@ -162,13 +240,6 @@ class City < ApplicationRecord
     (base * WORKFORCE_RATE_NUM) / WORKFORCE_RATE_DEN
   end
 
-  # ✅ Paso 3: sincroniza workforce con población y mantiene coherencia con asignaciones
-  # - Recalcula workers_population desde total_population
-  # - Ajusta free_population para mantener balance
-  # - Deshabilitados -> workers_assigned = 0 (hardening)
-  # - Rebalancea si sum(workers_assigned) > workers_population
-  #
-  # already_locked: true si lo llamas dentro de city.with_lock (por ejemplo, en Tick)
   def sync_workforce!(already_locked: false)
     if already_locked
       run_sync_workforce!
@@ -180,7 +251,6 @@ class City < ApplicationRecord
   private
 
   def set_initial_state
-    # Población inicial (no depende de recursos)
     if total_population.zero? &&
        free_population.zero? &&
        workers_population.zero? &&
@@ -190,21 +260,17 @@ class City < ApplicationRecord
 
       self.total_population = INITIAL_POPULATION
 
-      # ✅ Paso 3: inicializa workforce coherente desde el primer día
       target_workers = compute_workers_population(INITIAL_POPULATION)
 
-      # Mantener balance exacto (otros grupos están en 0 aquí)
       self.workers_population = target_workers
       self.free_population    = INITIAL_POPULATION - target_workers
     end
 
-    # Starter pack (solo setea si el campo está en 0; no pisa valores manuales)
     self.food  = STARTER_PACK if food.zero?
     self.wood  = STARTER_PACK if wood.zero?
     self.stone = STARTER_PACK if stone.zero?
     self.money = STARTER_PACK if money.zero?
 
-    # ✅ Phase 5: infraestructura inicial
     self.infrastructure_level = 0 if infrastructure_level.nil?
   end
 
@@ -214,53 +280,119 @@ class City < ApplicationRecord
     errors.add(:total_population, "must equal sum of all population groups")
   end
 
-  def storage_rule_for(resource)
-    normalized = resource.to_s
-    rule = STORAGE_RULES[normalized]
-    raise ArgumentError, "Unsupported storage resource: #{normalized}" if rule.nil?
-
-    rule
-  end
-
-  def hall_base_storage_for(resource)
-    normalized = resource.to_s
-    return 0 unless HALL_BASE_STORAGE.key?(normalized)
+  def hall_base_storage_for(good_key)
+    return 0 unless HALL_BASE_STORAGE.key?(good_key)
 
     hall_exists = city_buildings
                     .joins(:building)
                     .where(buildings: { key: HALL_BUILDING_KEYS })
                     .exists?
 
-    hall_exists ? HALL_BASE_STORAGE[normalized] : 0
+    hall_exists ? HALL_BASE_STORAGE[good_key] : 0
   end
 
-  def current_resource_amount(resource)
-    normalized = resource.to_s
-    raise ArgumentError, "Unsupported storage resource: #{normalized}" unless STORAGE_RULES.key?(normalized)
+  def storage_building_keys_for!(good_key)
+    target = GoodCatalog.final_storage_target_for(good_key)
 
-    public_send(normalized).to_i
+    case target
+    when "deposit"
+      DEPOSIT_BUILDING_KEYS
+    when "fluid_deposit"
+      FLUID_DEPOSIT_BUILDING_KEYS
+    else
+      raise ArgumentError, "Unsupported final storage target for #{good_key}: #{target}"
+    end
+  end
+
+  def stored_amount_for(key)
+    normalized = key.to_s.strip.downcase
+
+    return knowledge.to_i if normalized == "knowledge"
+
+    normalize_good_key!(normalized)
+
+    if GoodCatalog.uses_legacy_city_attribute?(normalized)
+      attribute = GoodCatalog.city_attribute_for(normalized)
+      public_send(attribute).to_i
+    else
+      city_stored_goods.find_by(good_key: normalized)&.amount.to_i
+    end
+  end
+
+  def increase_final_stored_good!(good_key, amount)
+    normalized = normalize_good_key!(good_key)
+    delta = amount.to_i
+
+    raise ArgumentError, "amount must be greater than 0" unless delta.positive?
+
+    if GoodCatalog.uses_legacy_city_attribute?(normalized)
+      attribute = GoodCatalog.city_attribute_for(normalized)
+      self.public_send("#{attribute}=", public_send(attribute).to_i + delta)
+      save!
+    else
+      stock = find_or_initialize_stored_good_record(normalized)
+      stock.amount = stock.amount.to_i + delta
+      stock.save!
+    end
+  end
+
+  def decrease_final_stored_good!(good_key, amount)
+    normalized = normalize_good_key!(good_key)
+    delta = amount.to_i
+
+    raise ArgumentError, "amount must be greater than 0" unless delta.positive?
+
+    current = stored_amount_for(normalized)
+    raise ArgumentError, "insufficient available good: #{normalized}" if current < delta
+
+    if GoodCatalog.uses_legacy_city_attribute?(normalized)
+      attribute = GoodCatalog.city_attribute_for(normalized)
+      self.public_send("#{attribute}=", current - delta)
+      save!
+    else
+      stock = find_or_initialize_stored_good_record(normalized)
+      stock.amount = current - delta
+      stock.save!
+    end
+  end
+
+  def normalize_good_key!(good_key)
+    normalized = GoodCatalog.normalize(good_key)
+    GoodCatalog.fetch!(normalized)
+    normalized
+  end
+
+  def find_or_initialize_logistic_stock_record(good_key)
+    normalized = normalize_good_key!(good_key)
+
+    city_logistic_stocks.find_or_initialize_by(good_key: normalized) do |stock|
+      stock.amount = 0
+    end
+  end
+
+  def find_or_initialize_stored_good_record(good_key)
+    normalized = normalize_good_key!(good_key)
+
+    city_stored_goods.find_or_initialize_by(good_key: normalized) do |stock|
+      stock.amount = 0
+    end
   end
 
   def run_sync_workforce!
-    # 1) Recalcular workforce capacity
     target_workers = compute_workers_population(total_population)
 
-    # 2) Ajustar free_population para mantener el balance (sin tocar grupos especiales)
     non_free = military_population.to_i + university_population.to_i + laboratory_population.to_i + target_workers
     new_free = total_population.to_i - non_free
 
-    # Estado inválido (debería ser imposible si el resto está bien)
     if new_free.negative?
       raise ActiveRecord::RecordInvalid.new(self), "Invalid population breakdown: free would be negative"
     end
 
     update!(workers_population: target_workers, free_population: new_free)
 
-    # 3) Hardening: buildings deshabilitados no deben consumir workforce
     city_buildings.where(enabled: false).where.not(workers_assigned: 0)
                   .update_all(workers_assigned: 0, updated_at: Time.current)
 
-    # 4) Rebalance determinístico si hay overflow de asignaciones
     total_assigned = city_buildings.sum(:workers_assigned).to_i
     overflow = total_assigned - workers_population.to_i
     return if overflow <= 0

@@ -1,13 +1,6 @@
 class LogisticOperation < ApplicationRecord
-  TRANSPORTABLE_RESOURCES = %w[
-    food
-    coal
-    iron_ore
-    stone
-    wood
-    crude_oil
-    fuel
-  ].freeze
+  TRANSPORTABLE_GOODS = GoodCatalog.transportable_keys.freeze
+  TRANSPORTABLE_RESOURCES = TRANSPORTABLE_GOODS
 
   STATUSES = {
     loading: "loading",
@@ -40,7 +33,7 @@ class LogisticOperation < ApplicationRecord
 
   validates :resource,
             presence: true,
-            inclusion: { in: TRANSPORTABLE_RESOURCES }
+            inclusion: { in: TRANSPORTABLE_GOODS }
 
   validates :amount,
             numericality: { only_integer: true, greater_than: 0 }

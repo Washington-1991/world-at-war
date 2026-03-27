@@ -6,20 +6,12 @@ class LedgerEvent < ApplicationRecord
     build
     upgrade
     admin_adjustment
+    transport_completed
   ].freeze
 
-  ALLOWED_DELTA_KEYS = %w[
-    food
-    coal
-    iron_ore
-    stone
-    wood
-    crude_oil
-    fuel
-    energy
-    knowledge
-    money
-  ].freeze
+  ALLOWED_DELTA_KEYS = (
+    GoodCatalog.keys + %w[energy knowledge money]
+  ).freeze
 
   MAX_ABS_DELTA_VALUE = 10_000_000
 

@@ -23,11 +23,16 @@ class CityBuilding < ApplicationRecord
     town hall
   ].freeze
 
-  RESOURCE_DEPOT_IDENTIFIERS = %w[
+  DEPOSIT_BUILDING_IDENTIFIERS = %w[
     resource_depot
     resource depot
     resource-depot
     resourcedepot
+    deposit
+    deposits
+    storage_deposit
+    storage deposit
+    storage-deposit
   ].freeze
 
   FLUID_DEPOT_IDENTIFIERS = %w[
@@ -35,6 +40,10 @@ class CityBuilding < ApplicationRecord
     fluid depot
     fluid-depot
     fluiddepot
+    fluid_deposit
+    fluid deposit
+    fluid-deposit
+    fluiddeposit
   ].freeze
 
   LOGISTIC_STATION_IDENTIFIERS = %w[
@@ -46,28 +55,19 @@ class CityBuilding < ApplicationRecord
 
   before_validation :normalize_assigned_resource
 
-  # Solo el Hall es único por ciudad.
-  # El resto de edificios son stackable.
   validate :hall_must_be_unique_per_city
 
   validates :level, numericality: { only_integer: true, greater_than_or_equal_to: 1 }
   validates :workers_assigned, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :enabled, inclusion: { in: [ true, false ] }
 
-  # Por ahora permitimos nil (porque aún no definimos PV por tipo/nivel)
   validates :hp,     numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true
   validates :max_hp, numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true
 
   validate :hp_must_be_nil_when_building_has_no_hp
-
-  # ✅ Paso 2: defensa extra (anti-exploit / anti-corrupción)
-  # Impide que workers_assigned supere workers_required definido en Building.rules[level]
   validate :workers_assigned_cannot_exceed_required
-
-  # ✅ Phase 5 Step 3: assigned storage validation
   validate :assigned_resource_must_match_building_type
 
-  # Helper usado por el service y por esta validación
   def workers_required
     return 0 if building.nil? || level.nil?
     building.workers_required_for(level).to_i
@@ -85,8 +85,12 @@ class CityBuilding < ApplicationRecord
     (normalized_building_identifiers & HALL_IDENTIFIERS).any?
   end
 
+  def deposit_building?
+    (normalized_building_identifiers & DEPOSIT_BUILDING_IDENTIFIERS).any?
+  end
+
   def resource_depot_building?
-    (normalized_building_identifiers & RESOURCE_DEPOT_IDENTIFIERS).any?
+    deposit_building?
   end
 
   def fluid_depot_building?
@@ -98,12 +102,12 @@ class CityBuilding < ApplicationRecord
   end
 
   def assignable_storage_building?
-    resource_depot_building? || fluid_depot_building?
+    deposit_building? || fluid_depot_building?
   end
 
   def allowed_assigned_resources
-    return SOLID_STORAGE_RESOURCES if resource_depot_building?
-    return FLUID_STORAGE_RESOURCES if fluid_depot_building?
+    return deposit_storage_goods if deposit_building?
+    return fluid_storage_goods if fluid_depot_building?
 
     []
   end
@@ -159,9 +163,9 @@ class CityBuilding < ApplicationRecord
   def assigned_resource_must_match_building_type
     return if building.nil?
 
-    if resource_depot_building?
+    if deposit_building?
       return if assigned_resource.nil?
-      return if SOLID_STORAGE_RESOURCES.include?(assigned_resource)
+      return if deposit_storage_goods.include?(assigned_resource)
 
       errors.add(:assigned_resource, "is not compatible with resource_depot")
       return
@@ -169,7 +173,7 @@ class CityBuilding < ApplicationRecord
 
     if fluid_depot_building?
       return if assigned_resource.nil?
-      return if FLUID_STORAGE_RESOURCES.include?(assigned_resource)
+      return if fluid_storage_goods.include?(assigned_resource)
 
       errors.add(:assigned_resource, "is not compatible with fluid_depot")
       return
@@ -177,6 +181,18 @@ class CityBuilding < ApplicationRecord
 
     if assigned_resource.present?
       errors.add(:assigned_resource, "must be nil for non-storage buildings")
+    end
+  end
+
+  def deposit_storage_goods
+    GoodCatalog.keys.select do |good_key|
+      GoodCatalog.final_storage_target_for(good_key) == "deposit"
+    end
+  end
+
+  def fluid_storage_goods
+    GoodCatalog.keys.select do |good_key|
+      GoodCatalog.final_storage_target_for(good_key) == "fluid_deposit"
     end
   end
 end

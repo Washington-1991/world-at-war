@@ -41,7 +41,16 @@ class City::Tick
   end
 
   def call
+    # ✅ Phase 6 Step 4: procesa llegadas logísticas vencidas fuera del lock local
+    City::CompleteDueLogisticOperations.call(now: @now)
+
     @city.with_lock do
+      @city.reload
+
+      # ✅ Intenta vaciar buffer logístico al storage final antes del snapshot del tick.
+      # Así evitamos mezclar movimientos internos de logística con el ledger del tick económico.
+      @city.flush_logistic_goods_to_storage!
+
       # Primer tick: fijamos el punto de partida (evita “ticks gigantes” al crear)
       if @city.last_tick_at.nil?
         @city.last_tick_at = @now
@@ -72,7 +81,9 @@ class City::Tick
       after_resources = resource_snapshot
       delta = compute_resource_delta(before_resources, after_resources)
 
-      record_tick_ledger_event!(delta: delta, hours: hours, truncated_resources: truncated_resources) if delta.any? || truncated_resources.any?
+      if delta.any? || truncated_resources.any?
+        record_tick_ledger_event!(delta: delta, hours: hours, truncated_resources: truncated_resources)
+      end
 
       # ✅ Idempotencia: avanzamos last_tick_at solo lo procesado
       @city.last_tick_at = @city.last_tick_at + hours.hours

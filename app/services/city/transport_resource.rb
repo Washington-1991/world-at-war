@@ -7,7 +7,7 @@ class City::TransportResource
     @origin_city = origin_city
     @destination_city = destination_city
     @actor_user = actor_user
-    @resource_key = resource_key.to_s.strip.downcase
+    @good_key = GoodCatalog.normalize(resource_key)
     @amount = amount.to_i
     @trucks_assigned = trucks_assigned.to_i
     @eta_hours = eta_hours.to_i
@@ -22,18 +22,16 @@ class City::TransportResource
       locked_origin.reload
       locked_destination.reload
 
-      ensure_resource_exists_on_origin!(locked_origin)
-      ensure_enough_resource!(locked_origin)
+      ensure_enough_origin_stock!(locked_origin)
+      ensure_enough_destination_logistic_capacity!(locked_destination)
       ensure_enough_trucks!(locked_origin)
 
-      locked_origin.update!(
-        @resource_key => locked_origin.public_send(@resource_key).to_i - @amount
-      )
+      locked_origin.remove_available_good!(@good_key, @amount)
 
       LogisticOperation.create!(
         origin_city: locked_origin,
         destination_city: locked_destination,
-        resource: @resource_key,
+        resource: @good_key,
         amount: @amount,
         trucks_assigned: @trucks_assigned,
         fuel_cost: 0,
@@ -51,10 +49,7 @@ class City::TransportResource
     raise Error, "origin_city is required" if @origin_city.nil?
     raise Error, "destination_city is required" if @destination_city.nil?
     raise Error, "actor_user is required" if @actor_user.nil?
-
-    unless LogisticOperation::TRANSPORTABLE_RESOURCES.include?(@resource_key)
-      raise Error, "resource is not transportable"
-    end
+    raise Error, "good is not transportable" unless GoodCatalog.include?(@good_key)
 
     raise Error, "amount must be greater than 0" unless @amount.positive?
     raise Error, "trucks_assigned must be greater than 0" unless @trucks_assigned.positive?
@@ -70,29 +65,28 @@ class City::TransportResource
     raise Error, "forbidden for destination city" unless @destination_city.user_id == @actor_user.id
   end
 
-  def ensure_resource_exists_on_origin!(city)
-    unless city.respond_to?(@resource_key)
-      raise Error, "origin city does not support this resource"
-    end
+  def ensure_enough_origin_stock!(city)
+    return if city.available_good_amount(@good_key) >= @amount
+
+    raise Error, "insufficient stock in origin city"
   end
 
-  def ensure_enough_resource!(city)
-    current_amount = city.public_send(@resource_key).to_i
-    return if current_amount >= @amount
+  def ensure_enough_destination_logistic_capacity!(city)
+    return if city.enough_logistic_capacity_for?(@good_key, @amount)
 
-    raise Error, "insufficient resource in origin city"
+    raise Error, "insufficient free logistic capacity in destination city"
   end
 
   def ensure_enough_trucks!(city)
     if city.respond_to?(:enough_trucks_for?)
       return if city.enough_trucks_for?(@trucks_assigned)
+
       raise Error, "insufficient available trucks"
     end
 
     raise Error, "city truck availability logic is not implemented"
   end
 
-  # Orden estable para reducir riesgo de deadlocks.
   def with_locked_cities
     first_city, second_city = [ @origin_city, @destination_city ].sort_by(&:id)
 

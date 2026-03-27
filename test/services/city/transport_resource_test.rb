@@ -12,6 +12,7 @@ class City::TransportResourceTest < ActiveSupport::TestCase
     destination.update!(wood: 0)
 
     ensure_logistic_station!(origin, trucks_capacity: 100)
+    ensure_logistic_station!(destination, trucks_capacity: 100)
 
     now = Time.current
     operation = nil
@@ -47,7 +48,7 @@ class City::TransportResourceTest < ActiveSupport::TestCase
     assert_equal 60, origin.available_trucks_capacity
   end
 
-  test "rejects transport when origin resource is insufficient" do
+  test "rejects transport when origin stock is insufficient" do
     user = create_user!
     origin = create_city!(user: user)
     destination = create_city!(user: user)
@@ -56,6 +57,7 @@ class City::TransportResourceTest < ActiveSupport::TestCase
     destination.update!(wood: 0)
 
     ensure_logistic_station!(origin, trucks_capacity: 100)
+    ensure_logistic_station!(destination, trucks_capacity: 100)
 
     assert_no_difference("LogisticOperation.count") do
       error = assert_raises(City::TransportResource::Error) do
@@ -69,7 +71,7 @@ class City::TransportResourceTest < ActiveSupport::TestCase
         ).call
       end
 
-      assert_equal "insufficient resource in origin city", error.message
+      assert_equal "insufficient stock in origin city", error.message
     end
 
     origin.reload
@@ -89,6 +91,7 @@ class City::TransportResourceTest < ActiveSupport::TestCase
     destination.update!(wood: 0)
 
     ensure_logistic_station!(origin, trucks_capacity: 10)
+    ensure_logistic_station!(destination, trucks_capacity: 10)
 
     assert_no_difference("LogisticOperation.count") do
       error = assert_raises(City::TransportResource::Error) do
@@ -124,6 +127,7 @@ class City::TransportResourceTest < ActiveSupport::TestCase
     destination.update!(wood: 0)
 
     ensure_logistic_station!(origin, trucks_capacity: 100)
+    ensure_logistic_station!(destination, trucks_capacity: 100)
 
     assert_no_difference("LogisticOperation.count") do
       error = assert_raises(City::TransportResource::Error) do

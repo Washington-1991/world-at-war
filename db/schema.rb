@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_03_15_212121) do
+ActiveRecord::Schema[7.2].define(version: 2026_03_23_174735) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pgcrypto"
@@ -69,6 +69,25 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_15_212121) do
     t.string "assigned_resource"
     t.index ["building_id"], name: "index_city_buildings_on_building_id"
     t.index ["city_id"], name: "index_city_buildings_on_city_id"
+  end
+
+  create_table "city_logistic_stocks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "city_id", null: false
+    t.string "good_key"
+    t.integer "amount"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["city_id"], name: "index_city_logistic_stocks_on_city_id"
+  end
+
+  create_table "city_stored_goods", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "city_id", null: false
+    t.string "good_key", null: false
+    t.integer "amount", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["city_id", "good_key"], name: "index_city_stored_goods_on_city_id_and_good_key", unique: true
+    t.index ["city_id"], name: "index_city_stored_goods_on_city_id"
   end
 
   create_table "ledger_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -131,6 +150,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_15_212121) do
   add_foreign_key "cities", "users"
   add_foreign_key "city_buildings", "buildings"
   add_foreign_key "city_buildings", "cities"
+  add_foreign_key "city_logistic_stocks", "cities"
+  add_foreign_key "city_stored_goods", "cities"
   add_foreign_key "ledger_events", "cities"
   add_foreign_key "ledger_events", "users", column: "actor_user_id"
   add_foreign_key "logistic_operations", "cities", column: "destination_city_id", name: "fk_logistic_operations_destination_city"
