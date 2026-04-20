@@ -179,6 +179,15 @@ class City < ApplicationRecord
     decrease_final_stored_good!(normalized, requested)
   end
 
+  def add_available_good!(good_key, amount)
+    normalized = normalize_good_key!(good_key)
+    received = amount.to_i
+
+    raise ArgumentError, "amount must be greater than 0" unless received.positive?
+
+    increase_final_stored_good!(normalized, received)
+  end
+
   def receive_good_into_logistics!(good_key, amount)
     normalized = normalize_good_key!(good_key)
     received = amount.to_i

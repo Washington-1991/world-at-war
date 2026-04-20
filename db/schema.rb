@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_03_23_174735) do
+ActiveRecord::Schema[7.2].define(version: 2026_04_06_101200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pgcrypto"
@@ -119,8 +119,11 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_23_174735) do
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
     t.datetime "completed_at"
+    t.uuid "market_listing_id"
+    t.integer "market_total_price"
     t.index ["arrival_at"], name: "index_logistic_operations_on_arrival_at"
     t.index ["destination_city_id"], name: "index_logistic_operations_on_destination_city_id"
+    t.index ["market_listing_id"], name: "index_logistic_operations_on_market_listing_id"
     t.index ["origin_city_id"], name: "index_logistic_operations_on_origin_city_id"
     t.index ["status", "arrival_at"], name: "index_logistic_operations_on_status_and_arrival_at"
     t.index ["status"], name: "index_logistic_operations_on_status"
@@ -133,6 +136,36 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_23_174735) do
     t.check_constraint "status::text = 'completed'::text AND completed_at IS NOT NULL OR status::text <> 'completed'::text AND completed_at IS NULL", name: "logistic_operations_completed_at_matches_status"
     t.check_constraint "status::text = ANY (ARRAY['loading'::character varying, 'in_transit'::character varying, 'completed'::character varying, 'cancelled'::character varying]::text[])", name: "logistic_operations_valid_status"
     t.check_constraint "trucks_assigned > 0", name: "logistic_operations_trucks_assigned_positive"
+  end
+
+  create_table "market_listings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "seller_user_id", null: false
+    t.uuid "seller_city_id", null: false
+    t.string "good_key", null: false
+    t.integer "amount_total", null: false
+    t.integer "amount_available", null: false
+    t.integer "amount_return_pending", default: 0, null: false
+    t.integer "price_per_unit", null: false
+    t.string "currency_key", default: "money", null: false
+    t.string "status", default: "active", null: false
+    t.datetime "sold_out_at"
+    t.datetime "cancelled_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["good_key"], name: "index_market_listings_on_good_key"
+    t.index ["seller_city_id", "status"], name: "index_market_listings_on_seller_city_id_and_status"
+    t.index ["seller_city_id"], name: "index_market_listings_on_seller_city_id"
+    t.index ["seller_user_id"], name: "index_market_listings_on_seller_user_id"
+    t.index ["status", "good_key"], name: "index_market_listings_on_status_and_good_key"
+    t.index ["status"], name: "index_market_listings_on_status"
+    t.check_constraint "(amount_available + amount_return_pending) <= amount_total", name: "market_listings_available_plus_return_pending_lte_total"
+    t.check_constraint "amount_available <= amount_total", name: "market_listings_amount_available_lte_total"
+    t.check_constraint "amount_available >= 0", name: "market_listings_amount_available_non_negative"
+    t.check_constraint "amount_return_pending >= 0", name: "market_listings_amount_return_pending_non_negative"
+    t.check_constraint "amount_total > 0", name: "market_listings_amount_total_positive"
+    t.check_constraint "currency_key::text = 'money'::text", name: "market_listings_currency_key_money_only"
+    t.check_constraint "price_per_unit > 0", name: "market_listings_price_per_unit_positive"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'partially_filled'::character varying, 'sold_out'::character varying, 'cancelled'::character varying]::text[])", name: "market_listings_status_valid"
   end
 
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -156,4 +189,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_23_174735) do
   add_foreign_key "ledger_events", "users", column: "actor_user_id"
   add_foreign_key "logistic_operations", "cities", column: "destination_city_id", name: "fk_logistic_operations_destination_city"
   add_foreign_key "logistic_operations", "cities", column: "origin_city_id", name: "fk_logistic_operations_origin_city"
+  add_foreign_key "logistic_operations", "market_listings"
+  add_foreign_key "market_listings", "cities", column: "seller_city_id"
+  add_foreign_key "market_listings", "users", column: "seller_user_id"
 end

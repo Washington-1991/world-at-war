@@ -19,6 +19,8 @@ class LogisticOperation < ApplicationRecord
              foreign_key: :destination_city_id,
              inverse_of: :incoming_logistic_operations
 
+  belongs_to :market_listing, optional: true
+
   before_validation :normalize_resource
   before_validation :normalize_status_value
   before_validation :apply_numeric_defaults
@@ -47,12 +49,20 @@ class LogisticOperation < ApplicationRecord
   validates :distance_km,
             numericality: { greater_than_or_equal_to: 0 }
 
+  validates :market_total_price,
+            numericality: { only_integer: true, greater_than_or_equal_to: 0 },
+            allow_nil: true
+
   validates :started_at, presence: true
   validates :arrival_at, presence: true
 
   validate :cities_must_be_different
   validate :arrival_must_be_after_start
   validate :completed_at_must_match_status
+
+  def market_operation?
+    market_listing_id.present?
+  end
 
   # Compatibilidad legacy
   def resource_key

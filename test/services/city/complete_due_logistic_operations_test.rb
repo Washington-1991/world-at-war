@@ -190,6 +190,140 @@ class City::CompleteDueLogisticOperationsTest < ActiveSupport::TestCase
     assert_equal 0, destination.logistic_stock_for("crude_oil")
   end
 
+  test "completes market logistic operation and settles market sale" do
+    seller_user = create_user!
+    buyer_user = create_user!
+
+    seller_city = create_city!(user: seller_user, food: 10_000)
+    buyer_city = create_city!(user: buyer_user, money: 20_000)
+
+    seller_city.update_columns(money: 0)
+    buyer_city.update_columns(money: 20_000)
+
+    seller_city.reload
+    buyer_city.reload
+
+    ensure_hall_for!(seller_city)
+    ensure_hall_for!(buyer_city)
+    create_assigned_deposit_for!(buyer_city, resource: "food", level: 1)
+    ensure_logistic_station!(seller_city)
+    ensure_logistic_station!(buyer_city)
+
+    now = Time.zone.parse("2026-03-15 12:00:00")
+
+    assert_equal 0, seller_city.reload.money
+
+    listing = Market::CreateListing.new(
+      seller_city: seller_city,
+      actor_user: seller_user,
+      good_key: "food",
+      amount: 1_000,
+      price_per_unit: 10
+    ).call
+
+    operation = Market::BuyListing.new(
+      listing: listing,
+      buyer_city: buyer_city,
+      actor_user: buyer_user,
+      amount: 500,
+      trucks_assigned: 1,
+      eta_hours: 1,
+      now: now - 2.hours
+    ).call
+
+    operation.update!(arrival_at: now - 5.minutes)
+
+    assert_difference("LedgerEvent.count", 2) do
+      City::CompleteDueLogisticOperations.call(now: now)
+    end
+
+    operation.reload
+    seller_city.reload
+    buyer_city.reload
+
+    assert_equal "completed", operation.status
+    assert_equal now.to_i, operation.completed_at.to_i
+    assert_equal 5_000, seller_city.money
+
+    received = buyer_city.logistic_stock_for("food") + buyer_city.available_good_amount("food")
+    assert received >= 500
+
+    market_event = LedgerEvent.where(
+      city: seller_city,
+      action_type: "market_sale_completed"
+    ).order(:created_at).last
+
+    assert_not_nil market_event
+    assert_equal({ "money" => 5_000 }, market_event.delta)
+    assert_equal operation.id, market_event.meta["logistic_operation_id"]
+    assert_equal listing.id, market_event.meta["listing_id"]
+    assert_equal buyer_city.id, market_event.meta["buyer_city_id"]
+    assert_equal seller_city.id, market_event.meta["seller_city_id"]
+    assert_equal "food", market_event.meta["good_key"]
+    assert_equal 500, market_event.meta["amount"]
+    assert_equal 5_000, market_event.meta["market_total_price"]
+  end
+
+  test "does not double settle market sale when completion service runs twice" do
+    seller_user = create_user!
+    buyer_user = create_user!
+
+    seller_city = create_city!(user: seller_user, food: 10_000)
+    buyer_city = create_city!(user: buyer_user, money: 20_000)
+
+    seller_city.update_columns(money: 0)
+    buyer_city.update_columns(money: 20_000)
+
+    seller_city.reload
+    buyer_city.reload
+
+    ensure_hall_for!(seller_city)
+    ensure_hall_for!(buyer_city)
+    create_assigned_deposit_for!(buyer_city, resource: "food", level: 1)
+    ensure_logistic_station!(seller_city)
+    ensure_logistic_station!(buyer_city)
+
+    now = Time.zone.parse("2026-03-15 12:00:00")
+
+    assert_equal 0, seller_city.reload.money
+
+    listing = Market::CreateListing.new(
+      seller_city: seller_city,
+      actor_user: seller_user,
+      good_key: "food",
+      amount: 500,
+      price_per_unit: 10
+    ).call
+
+    operation = Market::BuyListing.new(
+      listing: listing,
+      buyer_city: buyer_city,
+      actor_user: buyer_user,
+      amount: 500,
+      trucks_assigned: 1,
+      eta_hours: 1,
+      now: now - 2.hours
+    ).call
+
+    operation.update!(arrival_at: now - 5.minutes)
+
+    City::CompleteDueLogisticOperations.call(now: now)
+    City::CompleteDueLogisticOperations.call(now: now)
+
+    seller_city.reload
+    operation.reload
+
+    assert_equal "completed", operation.status
+    assert_equal 5_000, seller_city.money
+
+    events = LedgerEvent.where(
+      city: seller_city,
+      action_type: "market_sale_completed"
+    )
+
+    assert_equal 1, events.count
+  end
+
   private
 
   def create_assigned_deposit_for!(city, resource:, level: 1)
@@ -262,6 +396,29 @@ class City::CompleteDueLogisticOperationsTest < ActiveSupport::TestCase
       }
     }
     building.save!
+
+    city_building = CityBuilding.find_or_initialize_by(city: city, building: building)
+    city_building.level = 1
+    city_building.workers_assigned = 0
+    city_building.enabled = true
+    city_building.save!
+  end
+
+  def ensure_hall_for!(city)
+    building = Building.find_or_create_by!(key: "hall") do |b|
+      b.name = "Hall"
+      b.description = ""
+      b.image = ""
+      b.infrastructure_cost = 0
+      b.has_hp = true
+      b.rules = {
+        "levels" => {
+          "1" => {
+            "workers_required" => 0
+          }
+        }
+      }
+    end
 
     city_building = CityBuilding.find_or_initialize_by(city: city, building: building)
     city_building.level = 1

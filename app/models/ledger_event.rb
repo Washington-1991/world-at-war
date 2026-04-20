@@ -7,6 +7,11 @@ class LedgerEvent < ApplicationRecord
     upgrade
     admin_adjustment
     transport_completed
+    market_listing_created
+    market_purchase_started
+    market_sale_completed
+    market_listing_cancelled
+    market_return_withdrawn
   ].freeze
 
   ALLOWED_DELTA_KEYS = (

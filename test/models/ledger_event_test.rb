@@ -37,6 +37,69 @@ class LedgerEventTest < ActiveSupport::TestCase
     assert event.valid?
   end
 
+  test "is valid for market listing created event" do
+    user = create_user!
+    city = create_city!(user: user)
+
+    event = LedgerEvent.new(
+      city: city,
+      actor_user: user,
+      action_type: "market_listing_created",
+      delta: { "steel" => -500 },
+      meta: {
+        "listing_id" => SecureRandom.uuid,
+        "seller_city_id" => city.id,
+        "good_key" => "steel",
+        "amount" => 500,
+        "price_per_unit" => 20
+      }
+    )
+
+    assert event.valid?
+  end
+
+  test "is valid for market purchase started event" do
+    user = create_user!
+    city = create_city!(user: user)
+
+    event = LedgerEvent.new(
+      city: city,
+      actor_user: user,
+      action_type: "market_purchase_started",
+      delta: { "money" => -10_000 },
+      meta: {
+        "listing_id" => SecureRandom.uuid,
+        "buyer_city_id" => city.id,
+        "good_key" => "steel",
+        "amount" => 500,
+        "price_per_unit" => 20
+      }
+    )
+
+    assert event.valid?
+  end
+
+  test "is valid for market sale completed event" do
+    user = create_user!
+    city = create_city!(user: user)
+
+    event = LedgerEvent.new(
+      city: city,
+      actor_user: user,
+      action_type: "market_sale_completed",
+      delta: { "money" => 10_000 },
+      meta: {
+        "listing_id" => SecureRandom.uuid,
+        "seller_city_id" => city.id,
+        "buyer_city_id" => SecureRandom.uuid,
+        "good_key" => "steel",
+        "amount" => 500
+      }
+    )
+
+    assert event.valid?
+  end
+
   test "is invalid with unknown action_type" do
     user = create_user!
     city = create_city!(user: user)
