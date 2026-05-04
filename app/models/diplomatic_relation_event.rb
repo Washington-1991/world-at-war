@@ -4,7 +4,7 @@ class DiplomaticRelationEvent < ApplicationRecord
     updated
   ].freeze
 
-  belongs_to :diplomatic_relation
+  belongs_to :diplomatic_relation, inverse_of: :diplomatic_relation_events
   belongs_to :actor_user, class_name: "User"
   belongs_to :source_user, class_name: "User"
   belongs_to :target_user, class_name: "User"

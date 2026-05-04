@@ -2,6 +2,10 @@ class DiplomaticRelation < ApplicationRecord
   belongs_to :source_user, class_name: "User"
   belongs_to :target_user, class_name: "User"
 
+  has_many :diplomatic_relation_events,
+           inverse_of: :diplomatic_relation,
+           dependent: :restrict_with_exception
+
   enum :relation_state, {
     neutral: 0,
     friendly: 1,
