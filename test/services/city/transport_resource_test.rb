@@ -48,6 +48,118 @@ class City::TransportResourceTest < ActiveSupport::TestCase
     assert_equal 60, origin.available_trucks_capacity
   end
 
+  test "allows cross-user transport when diplomacy allows it" do
+    origin_user = create_user!
+    destination_user = create_user!
+
+    origin = create_city!(user: origin_user)
+    destination = create_city!(user: destination_user)
+
+    origin.update!(wood: 1_000)
+    destination.update!(wood: 0)
+
+    ensure_logistic_station!(origin, trucks_capacity: 100)
+    ensure_logistic_station!(destination, trucks_capacity: 100)
+
+    operation = nil
+
+    assert_difference("LogisticOperation.count", 1) do
+      operation = City::TransportResource.new(
+        origin_city: origin,
+        destination_city: destination,
+        actor_user: origin_user,
+        resource_key: "wood",
+        amount: 250,
+        trucks_assigned: 25
+      ).call
+    end
+
+    origin.reload
+    destination.reload
+
+    assert_equal origin.id, operation.origin_city_id
+    assert_equal destination.id, operation.destination_city_id
+    assert_equal "in_transit", operation.status
+    assert_equal 750, origin.wood
+    assert_equal 0, destination.wood
+  end
+
+  test "blocks cross-user transport when destination user embargoes origin user" do
+    origin_user = create_user!
+    destination_user = create_user!
+
+    origin = create_city!(user: origin_user)
+    destination = create_city!(user: destination_user)
+
+    origin.update!(wood: 1_000)
+
+    ensure_logistic_station!(origin, trucks_capacity: 100)
+    ensure_logistic_station!(destination, trucks_capacity: 100)
+
+    DiplomaticRelation.create!(
+      source_user: destination_user,
+      target_user: origin_user,
+      relation_state: :hostile,
+      trade_policy: :embargoed
+    )
+
+    assert_no_difference("LogisticOperation.count") do
+      error = assert_raises(City::TransportResource::Error) do
+        City::TransportResource.new(
+          origin_city: origin,
+          destination_city: destination,
+          actor_user: origin_user,
+          resource_key: "wood",
+          amount: 250,
+          trucks_assigned: 25
+        ).call
+      end
+
+      assert_equal "logistics blocked by diplomacy: importer_embargo", error.message
+    end
+
+    origin.reload
+    assert_equal 1_000, origin.wood
+  end
+
+  test "blocks cross-user transport when origin user is enemy toward destination user" do
+    origin_user = create_user!
+    destination_user = create_user!
+
+    origin = create_city!(user: origin_user)
+    destination = create_city!(user: destination_user)
+
+    origin.update!(wood: 1_000)
+
+    ensure_logistic_station!(origin, trucks_capacity: 100)
+    ensure_logistic_station!(destination, trucks_capacity: 100)
+
+    DiplomaticRelation.create!(
+      source_user: origin_user,
+      target_user: destination_user,
+      relation_state: :enemy,
+      trade_policy: :open
+    )
+
+    assert_no_difference("LogisticOperation.count") do
+      error = assert_raises(City::TransportResource::Error) do
+        City::TransportResource.new(
+          origin_city: origin,
+          destination_city: destination,
+          actor_user: origin_user,
+          resource_key: "wood",
+          amount: 250,
+          trucks_assigned: 25
+        ).call
+      end
+
+      assert_equal "logistics blocked by diplomacy: exporter_embargo", error.message
+    end
+
+    origin.reload
+    assert_equal 1_000, origin.wood
+  end
+
   test "rejects transport when origin stock is insufficient" do
     user = create_user!
     origin = create_city!(user: user)
@@ -116,7 +228,7 @@ class City::TransportResourceTest < ActiveSupport::TestCase
     assert_equal 10, origin.available_trucks_capacity
   end
 
-  test "rejects transport between cities not owned by actor" do
+  test "rejects transport when actor does not own origin city" do
     owner = create_user!
     intruder = create_user!
 

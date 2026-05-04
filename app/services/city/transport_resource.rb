@@ -22,6 +22,11 @@ class City::TransportResource
       locked_origin.reload
       locked_destination.reload
 
+      ensure_diplomatic_logistics_allowed!(
+        origin_city: locked_origin,
+        destination_city: locked_destination
+      )
+
       ensure_enough_origin_stock!(locked_origin)
       ensure_enough_destination_logistic_capacity!(locked_destination)
       ensure_enough_trucks!(locked_origin)
@@ -62,7 +67,17 @@ class City::TransportResource
 
   def authorize!
     raise Error, "forbidden for origin city" unless @origin_city.user_id == @actor_user.id
-    raise Error, "forbidden for destination city" unless @destination_city.user_id == @actor_user.id
+  end
+
+  def ensure_diplomatic_logistics_allowed!(origin_city:, destination_city:)
+    trade_context = Diplomacy::ResolveTradeContext.call(
+      importer_user: destination_city.user,
+      exporter_user: origin_city.user
+    )
+
+    return if trade_context.allowed?
+
+    raise Error, "logistics blocked by diplomacy: #{trade_context.blocked_reason}"
   end
 
   def ensure_enough_origin_stock!(city)
