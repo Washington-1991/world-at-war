@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_04_06_101200) do
+ActiveRecord::Schema[7.2].define(version: 2026_04_30_104558) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pgcrypto"
@@ -88,6 +88,21 @@ ActiveRecord::Schema[7.2].define(version: 2026_04_06_101200) do
     t.datetime "updated_at", null: false
     t.index ["city_id", "good_key"], name: "index_city_stored_goods_on_city_id_and_good_key", unique: true
     t.index ["city_id"], name: "index_city_stored_goods_on_city_id"
+  end
+
+  create_table "diplomatic_relations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "source_user_id", null: false
+    t.uuid "target_user_id", null: false
+    t.integer "relation_state", default: 0, null: false
+    t.integer "trade_policy", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["source_user_id", "target_user_id"], name: "index_diplomatic_relations_on_source_and_target", unique: true
+    t.index ["source_user_id"], name: "index_diplomatic_relations_on_source_user_id"
+    t.index ["target_user_id"], name: "index_diplomatic_relations_on_target_user_id"
+    t.check_constraint "relation_state = ANY (ARRAY[0, 1, 2, 3, 4, 5])", name: "check_diplomatic_relations_relation_state"
+    t.check_constraint "source_user_id <> target_user_id", name: "check_diplomatic_relations_no_self_relation"
+    t.check_constraint "trade_policy = ANY (ARRAY[0, 1])", name: "check_diplomatic_relations_trade_policy"
   end
 
   create_table "ledger_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -185,6 +200,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_04_06_101200) do
   add_foreign_key "city_buildings", "cities"
   add_foreign_key "city_logistic_stocks", "cities"
   add_foreign_key "city_stored_goods", "cities"
+  add_foreign_key "diplomatic_relations", "users", column: "source_user_id"
+  add_foreign_key "diplomatic_relations", "users", column: "target_user_id"
   add_foreign_key "ledger_events", "cities"
   add_foreign_key "ledger_events", "users", column: "actor_user_id"
   add_foreign_key "logistic_operations", "cities", column: "destination_city_id", name: "fk_logistic_operations_destination_city"

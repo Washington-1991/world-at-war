@@ -1,0 +1,3 @@
+# No fixtures for diplomatic relations.
+# DiplomaticRelation records are created explicitly inside tests
+# to avoid invalid directed relationships and preserve DB constraints.

@@ -5,6 +5,18 @@ class User < ApplicationRecord
   has_many :cities, dependent: :destroy
   has_many :ledger_events, foreign_key: :actor_user_id, dependent: :nullify, inverse_of: :actor_user
 
+  has_many :outgoing_diplomatic_relations,
+           class_name: "DiplomaticRelation",
+           foreign_key: :source_user_id,
+           inverse_of: :source_user,
+           dependent: :destroy
+
+  has_many :incoming_diplomatic_relations,
+           class_name: "DiplomaticRelation",
+           foreign_key: :target_user_id,
+           inverse_of: :target_user,
+           dependent: :destroy
+
   # Seguridad / integridad
   validates :email, presence: true, uniqueness: { case_sensitive: false }
   validates :name, presence: true, length: { in: 2..32 }
