@@ -17,6 +17,24 @@ class User < ApplicationRecord
            inverse_of: :target_user,
            dependent: :destroy
 
+  has_many :acted_diplomatic_relation_events,
+           class_name: "DiplomaticRelationEvent",
+           foreign_key: :actor_user_id,
+           inverse_of: :actor_user,
+           dependent: :destroy
+
+  has_many :sent_diplomatic_relation_events,
+           class_name: "DiplomaticRelationEvent",
+           foreign_key: :source_user_id,
+           inverse_of: :source_user,
+           dependent: :destroy
+
+  has_many :received_diplomatic_relation_events,
+           class_name: "DiplomaticRelationEvent",
+           foreign_key: :target_user_id,
+           inverse_of: :target_user,
+           dependent: :destroy
+
   # Seguridad / integridad
   validates :email, presence: true, uniqueness: { case_sensitive: false }
   validates :name, presence: true, length: { in: 2..32 }

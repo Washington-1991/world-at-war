@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_04_113731) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_04_130144) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pgcrypto"
@@ -88,6 +88,36 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_04_113731) do
     t.datetime "updated_at", null: false
     t.index ["city_id", "good_key"], name: "index_city_stored_goods_on_city_id_and_good_key", unique: true
     t.index ["city_id"], name: "index_city_stored_goods_on_city_id"
+  end
+
+  create_table "diplomatic_relation_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "diplomatic_relation_id", null: false
+    t.uuid "actor_user_id", null: false
+    t.uuid "source_user_id", null: false
+    t.uuid "target_user_id", null: false
+    t.string "action_type", null: false
+    t.string "previous_relation_state"
+    t.string "new_relation_state", null: false
+    t.string "previous_trade_policy"
+    t.string "new_trade_policy", null: false
+    t.string "previous_effective_trade_policy"
+    t.string "new_effective_trade_policy", null: false
+    t.integer "previous_tariff_rate_basis_points"
+    t.integer "new_tariff_rate_basis_points"
+    t.jsonb "meta", default: {}, null: false
+    t.datetime "read_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["action_type"], name: "index_diplomatic_relation_events_on_action_type"
+    t.index ["actor_user_id"], name: "index_diplomatic_relation_events_on_actor_user_id"
+    t.index ["diplomatic_relation_id"], name: "index_diplomatic_relation_events_on_diplomatic_relation_id"
+    t.index ["source_user_id", "target_user_id"], name: "index_diplomatic_relation_events_on_source_and_target"
+    t.index ["source_user_id"], name: "index_diplomatic_relation_events_on_source_user_id"
+    t.index ["target_user_id", "read_at"], name: "index_diplomatic_relation_events_on_target_and_read_at"
+    t.index ["target_user_id"], name: "index_diplomatic_relation_events_on_target_user_id"
+    t.check_constraint "action_type::text = ANY (ARRAY['created'::character varying, 'updated'::character varying]::text[])", name: "check_diplomatic_relation_events_action_type"
+    t.check_constraint "actor_user_id = source_user_id", name: "check_diplomatic_relation_events_actor_is_source"
+    t.check_constraint "source_user_id <> target_user_id", name: "check_diplomatic_relation_events_no_self_relation"
   end
 
   create_table "diplomatic_relations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -201,6 +231,10 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_04_113731) do
   add_foreign_key "city_buildings", "cities"
   add_foreign_key "city_logistic_stocks", "cities"
   add_foreign_key "city_stored_goods", "cities"
+  add_foreign_key "diplomatic_relation_events", "diplomatic_relations"
+  add_foreign_key "diplomatic_relation_events", "users", column: "actor_user_id"
+  add_foreign_key "diplomatic_relation_events", "users", column: "source_user_id"
+  add_foreign_key "diplomatic_relation_events", "users", column: "target_user_id"
   add_foreign_key "diplomatic_relations", "users", column: "source_user_id"
   add_foreign_key "diplomatic_relations", "users", column: "target_user_id"
   add_foreign_key "ledger_events", "cities"

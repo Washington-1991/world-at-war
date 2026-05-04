@@ -1,0 +1,2 @@
+# No fixtures for diplomatic relation events.
+# Events are created explicitly inside tests.
