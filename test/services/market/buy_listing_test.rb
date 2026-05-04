@@ -19,14 +19,8 @@ class Market::BuyListingTest < ActiveSupport::TestCase
     @buyer_city.reload
   end
 
-  test "creates purchase correctly and creates logistic operation" do
-    listing = Market::CreateListing.new(
-      seller_city: @seller_city,
-      actor_user: @seller_user,
-      good_key: "food",
-      amount: 1_000,
-      price_per_unit: 10
-    ).call
+  test "creates purchase correctly and creates logistic operation with neutral tariff" do
+    listing = create_food_listing(amount: 1_000, price_per_unit: 10)
 
     operation = Market::BuyListing.new(
       listing: listing,
@@ -43,6 +37,8 @@ class Market::BuyListingTest < ActiveSupport::TestCase
     assert operation.persisted?
     assert_equal @seller_city.id, operation.origin_city_id
     assert_equal @buyer_city.id, operation.destination_city_id
+    assert_equal listing.id, operation.market_listing_id
+    assert_equal 4_000, operation.market_total_price
     assert_equal "food", operation.resource
     assert_equal 400, operation.amount
     assert_equal 2, operation.trucks_assigned
@@ -52,33 +48,196 @@ class Market::BuyListingTest < ActiveSupport::TestCase
     assert_equal "partially_filled", listing.status
     assert_nil listing.sold_out_at
 
-    assert_equal 16_000, @buyer_city.money
+    assert_equal 15_600, @buyer_city.money
 
-    event = LedgerEvent.where(
-      city: @buyer_city,
-      action_type: "market_purchase_started"
-    ).order(:created_at).last
+    event = latest_purchase_event
 
     assert_not_nil event
-    assert_equal({ "money" => -4_000 }, event.delta)
+    assert_equal({ "money" => -4_400 }, event.delta)
     assert_equal listing.id, event.meta["listing_id"]
     assert_equal @buyer_city.id, event.meta["buyer_city_id"]
     assert_equal @seller_city.id, event.meta["seller_city_id"]
+    assert_equal @buyer_user.id, event.meta["buyer_user_id"]
+    assert_equal @seller_user.id, event.meta["seller_user_id"]
     assert_equal "food", event.meta["good_key"]
     assert_equal 400, event.meta["amount"]
     assert_equal 10, event.meta["price_per_unit"]
-    assert_equal 4_000, event.meta["total_price"]
+    assert_equal 4_000, event.meta["base_price"]
+    assert_equal 4_000, event.meta["seller_receives_price"]
+    assert_equal 1_000, event.meta["tariff_rate_basis_points"]
+    assert_equal 400, event.meta["tariff_amount"]
+    assert_equal 4_400, event.meta["total_buyer_cost"]
+    assert_equal 4_400, event.meta["total_price"]
+    assert_equal "money_sink", event.meta["tariff_destination"]
     assert_equal operation.id, event.meta["logistic_operation_id"]
+
+    diplomacy = event.meta["diplomacy"]
+    assert_equal @buyer_user.id, diplomacy["importer_user_id"]
+    assert_equal @seller_user.id, diplomacy["exporter_user_id"]
+    assert_equal false, diplomacy["same_user"]
+    assert_equal true, diplomacy["allowed"]
+    assert_nil diplomacy["blocked_reason"]
+    assert_equal "neutral", diplomacy["importer_relation_state"]
+    assert_equal "neutral", diplomacy["exporter_relation_state"]
+    assert_equal "open", diplomacy["importer_effective_trade_policy"]
+    assert_equal "open", diplomacy["exporter_effective_trade_policy"]
+    assert_equal 1_000, diplomacy["tariff_rate_basis_points"]
+    assert_equal 400, diplomacy["tariff_amount"]
+    assert_equal 4_400, diplomacy["total_buyer_cost"]
+  end
+
+  test "friendly relation applies reduced tariff" do
+    DiplomaticRelation.create!(
+      source_user: @buyer_user,
+      target_user: @seller_user,
+      relation_state: :friendly
+    )
+
+    listing = create_food_listing(amount: 1_000, price_per_unit: 10)
+
+    Market::BuyListing.new(
+      listing: listing,
+      buyer_city: @buyer_city,
+      actor_user: @buyer_user,
+      amount: 400,
+      trucks_assigned: 2,
+      eta_hours: 1
+    ).call
+
+    @buyer_city.reload
+    event = latest_purchase_event
+
+    assert_equal 15_800, @buyer_city.money
+    assert_equal({ "money" => -4_200 }, event.delta)
+    assert_equal 4_000, event.meta["base_price"]
+    assert_equal 500, event.meta["tariff_rate_basis_points"]
+    assert_equal 200, event.meta["tariff_amount"]
+    assert_equal 4_200, event.meta["total_buyer_cost"]
+  end
+
+  test "ally relation applies zero tariff" do
+    DiplomaticRelation.create!(
+      source_user: @buyer_user,
+      target_user: @seller_user,
+      relation_state: :ally
+    )
+
+    listing = create_food_listing(amount: 1_000, price_per_unit: 10)
+
+    operation = Market::BuyListing.new(
+      listing: listing,
+      buyer_city: @buyer_city,
+      actor_user: @buyer_user,
+      amount: 400,
+      trucks_assigned: 2,
+      eta_hours: 1
+    ).call
+
+    @buyer_city.reload
+    event = latest_purchase_event
+
+    assert_equal 16_000, @buyer_city.money
+    assert_equal 4_000, operation.market_total_price
+    assert_equal({ "money" => -4_000 }, event.delta)
+    assert_equal 0, event.meta["tariff_rate_basis_points"]
+    assert_equal 0, event.meta["tariff_amount"]
+    assert_equal 4_000, event.meta["total_buyer_cost"]
+  end
+
+  test "hostile relation applies high tariff when trade is open" do
+    DiplomaticRelation.create!(
+      source_user: @buyer_user,
+      target_user: @seller_user,
+      relation_state: :hostile,
+      trade_policy: :open
+    )
+
+    listing = create_food_listing(amount: 1_000, price_per_unit: 10)
+
+    Market::BuyListing.new(
+      listing: listing,
+      buyer_city: @buyer_city,
+      actor_user: @buyer_user,
+      amount: 400,
+      trucks_assigned: 2,
+      eta_hours: 1
+    ).call
+
+    @buyer_city.reload
+    event = latest_purchase_event
+
+    assert_equal 15_000, @buyer_city.money
+    assert_equal 2_500, event.meta["tariff_rate_basis_points"]
+    assert_equal 1_000, event.meta["tariff_amount"]
+    assert_equal 5_000, event.meta["total_buyer_cost"]
+  end
+
+  test "blocks purchase when buyer embargoes seller" do
+    DiplomaticRelation.create!(
+      source_user: @buyer_user,
+      target_user: @seller_user,
+      relation_state: :hostile,
+      trade_policy: :embargoed
+    )
+
+    listing = create_food_listing(amount: 1_000, price_per_unit: 10)
+
+    error = assert_raises(Market::BuyListing::Error) do
+      Market::BuyListing.new(
+        listing: listing,
+        buyer_city: @buyer_city,
+        actor_user: @buyer_user,
+        amount: 400,
+        trucks_assigned: 2,
+        eta_hours: 1
+      ).call
+    end
+
+    assert_equal "trade blocked by diplomacy: importer_embargo", error.message
+
+    listing.reload
+    @buyer_city.reload
+
+    assert_equal 1_000, listing.amount_available
+    assert_equal "active", listing.status
+    assert_equal 20_000, @buyer_city.money
+    assert_equal 0, LogisticOperation.where(market_listing: listing).count
+  end
+
+  test "blocks purchase when seller embargoes buyer" do
+    DiplomaticRelation.create!(
+      source_user: @seller_user,
+      target_user: @buyer_user,
+      relation_state: :enemy,
+      trade_policy: :open
+    )
+
+    listing = create_food_listing(amount: 1_000, price_per_unit: 10)
+
+    error = assert_raises(Market::BuyListing::Error) do
+      Market::BuyListing.new(
+        listing: listing,
+        buyer_city: @buyer_city,
+        actor_user: @buyer_user,
+        amount: 400,
+        trucks_assigned: 2,
+        eta_hours: 1
+      ).call
+    end
+
+    assert_equal "trade blocked by diplomacy: exporter_embargo", error.message
+
+    listing.reload
+    @buyer_city.reload
+
+    assert_equal 1_000, listing.amount_available
+    assert_equal "active", listing.status
+    assert_equal 20_000, @buyer_city.money
+    assert_equal 0, LogisticOperation.where(market_listing: listing).count
   end
 
   test "marks listing sold_out when purchase consumes all available amount" do
-    listing = Market::CreateListing.new(
-      seller_city: @seller_city,
-      actor_user: @seller_user,
-      good_key: "food",
-      amount: 300,
-      price_per_unit: 10
-    ).call
+    listing = create_food_listing(amount: 300, price_per_unit: 10)
 
     Market::BuyListing.new(
       listing: listing,
@@ -95,24 +254,18 @@ class Market::BuyListingTest < ActiveSupport::TestCase
     assert_equal 0, listing.amount_available
     assert_equal "sold_out", listing.status
     assert_not_nil listing.sold_out_at
-    assert_equal 17_000, @buyer_city.money
+    assert_equal 16_700, @buyer_city.money
   end
 
-  test "rejects insufficient money in buyer city" do
-    listing = Market::CreateListing.new(
-      seller_city: @seller_city,
-      actor_user: @seller_user,
-      good_key: "food",
-      amount: 1_000,
-      price_per_unit: 100
-    ).call
+  test "rejects insufficient money in buyer city including tariff" do
+    listing = create_food_listing(amount: 1_000, price_per_unit: 100)
 
     error = assert_raises(Market::BuyListing::Error) do
       Market::BuyListing.new(
         listing: listing,
         buyer_city: @buyer_city,
         actor_user: @buyer_user,
-        amount: 500,
+        amount: 200,
         trucks_assigned: 2,
         eta_hours: 1
       ).call
@@ -129,13 +282,7 @@ class Market::BuyListingTest < ActiveSupport::TestCase
   end
 
   test "rejects insufficient listing amount available" do
-    listing = Market::CreateListing.new(
-      seller_city: @seller_city,
-      actor_user: @seller_user,
-      good_key: "food",
-      amount: 200,
-      price_per_unit: 10
-    ).call
+    listing = create_food_listing(amount: 200, price_per_unit: 10)
 
     error = assert_raises(Market::BuyListing::Error) do
       Market::BuyListing.new(
@@ -152,13 +299,7 @@ class Market::BuyListingTest < ActiveSupport::TestCase
   end
 
   test "rejects insufficient free logistic capacity in buyer city" do
-    listing = Market::CreateListing.new(
-      seller_city: @seller_city,
-      actor_user: @seller_user,
-      good_key: "food",
-      amount: 500,
-      price_per_unit: 10
-    ).call
+    listing = create_food_listing(amount: 500, price_per_unit: 10)
 
     fill_buyer_logistics_to_capacity_for!("food")
 
@@ -177,13 +318,7 @@ class Market::BuyListingTest < ActiveSupport::TestCase
   end
 
   test "rejects insufficient available trucks in seller city" do
-    listing = Market::CreateListing.new(
-      seller_city: @seller_city,
-      actor_user: @seller_user,
-      good_key: "food",
-      amount: 500,
-      price_per_unit: 10
-    ).call
+    listing = create_food_listing(amount: 500, price_per_unit: 10)
 
     error = assert_raises(Market::BuyListing::Error) do
       Market::BuyListing.new(
@@ -202,13 +337,7 @@ class Market::BuyListingTest < ActiveSupport::TestCase
   test "rejects forbidden buyer city ownership" do
     intruder = create_user!
 
-    listing = Market::CreateListing.new(
-      seller_city: @seller_city,
-      actor_user: @seller_user,
-      good_key: "food",
-      amount: 500,
-      price_per_unit: 10
-    ).call
+    listing = create_food_listing(amount: 500, price_per_unit: 10)
 
     error = assert_raises(Market::BuyListing::Error) do
       Market::BuyListing.new(
@@ -253,6 +382,23 @@ class Market::BuyListingTest < ActiveSupport::TestCase
   end
 
   private
+
+  def create_food_listing(amount:, price_per_unit:)
+    Market::CreateListing.new(
+      seller_city: @seller_city,
+      actor_user: @seller_user,
+      good_key: "food",
+      amount: amount,
+      price_per_unit: price_per_unit
+    ).call
+  end
+
+  def latest_purchase_event
+    LedgerEvent.where(
+      city: @buyer_city,
+      action_type: "market_purchase_started"
+    ).order(:created_at).last
+  end
 
   def ensure_hall_for!(city)
     hall_building = Building.find_or_create_by!(key: "hall") do |building|

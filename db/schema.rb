@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_04_30_104558) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_04_113731) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pgcrypto"
@@ -102,6 +102,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_04_30_104558) do
     t.index ["target_user_id"], name: "index_diplomatic_relations_on_target_user_id"
     t.check_constraint "relation_state = ANY (ARRAY[0, 1, 2, 3, 4, 5])", name: "check_diplomatic_relations_relation_state"
     t.check_constraint "source_user_id <> target_user_id", name: "check_diplomatic_relations_no_self_relation"
+    t.check_constraint "trade_policy = 0 OR (relation_state = ANY (ARRAY[3, 4, 5]))", name: "check_diplomatic_relations_embargo_requires_negative_state"
     t.check_constraint "trade_policy = ANY (ARRAY[0, 1])", name: "check_diplomatic_relations_trade_policy"
   end
 
