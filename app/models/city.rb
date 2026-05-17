@@ -33,6 +33,13 @@ class City < ApplicationRecord
   DEPOSIT_BUILDING_KEYS = %w[resource_depot deposit].freeze
   FLUID_DEPOSIT_BUILDING_KEYS = %w[fluid_depot fluid_deposit].freeze
 
+  VEHICLE_HANGAR_BUILDING_KEYS = %w[vehicle_hangar].freeze
+  ARTILLERY_HANGAR_BUILDING_KEYS = %w[artillery_hangar].freeze
+  AIR_HANGAR_BUILDING_KEYS = %w[air_hangar].freeze
+
+  STORAGE_CAPACITY_PER_LEVEL = 10_000
+  SPECIALIZED_STORAGE_CAPACITY_PER_LEVEL = 100
+
   HALL_BUILDING_KEYS = %w[hall town_hall].freeze
 
   HALL_BASE_STORAGE = {
@@ -150,8 +157,20 @@ class City < ApplicationRecord
 
     normalize_good_key!(normalized)
 
-    hall_base = hall_base_storage_for(normalized)
+    target = GoodCatalog.final_storage_target_for(normalized)
     building_keys = storage_building_keys_for!(normalized)
+
+    if shared_storage_target?(target)
+      total_levels = city_buildings
+                       .joins(:building)
+                       .where(buildings: { key: building_keys })
+                       .sum(:level)
+                       .to_i
+
+      return total_levels * SPECIALIZED_STORAGE_CAPACITY_PER_LEVEL
+    end
+
+    hall_base = hall_base_storage_for(normalized)
 
     total_levels = city_buildings
                      .joins(:building)
@@ -159,11 +178,11 @@ class City < ApplicationRecord
                      .sum(:level)
                      .to_i
 
-    hall_base + (total_levels * 10_000)
+    hall_base + (total_levels * STORAGE_CAPACITY_PER_LEVEL)
   end
 
   def storage_free_for(resource)
-    free = max_storage_for(resource) - stored_amount_for(resource)
+    free = max_storage_for(resource) - storage_used_for(resource)
     free.positive? ? free : 0
   end
 
@@ -308,8 +327,40 @@ class City < ApplicationRecord
       DEPOSIT_BUILDING_KEYS
     when "fluid_deposit"
       FLUID_DEPOSIT_BUILDING_KEYS
+    when "vehicle_hangar"
+      VEHICLE_HANGAR_BUILDING_KEYS
+    when "artillery_hangar"
+      ARTILLERY_HANGAR_BUILDING_KEYS
+    when "air_hangar"
+      AIR_HANGAR_BUILDING_KEYS
     else
       raise ArgumentError, "Unsupported final storage target for #{good_key}: #{target}"
+    end
+  end
+
+  def shared_storage_target?(target)
+    %w[
+      vehicle_hangar
+      artillery_hangar
+      air_hangar
+    ].include?(target)
+  end
+
+  def storage_used_for(resource)
+    normalized = resource.to_s.strip.downcase
+
+    return knowledge.to_i if normalized == "knowledge"
+
+    normalize_good_key!(normalized)
+
+    target = GoodCatalog.final_storage_target_for(normalized)
+
+    return stored_amount_for(normalized) unless shared_storage_target?(target)
+
+    GoodCatalog.stored_good_keys.sum do |good_key|
+      next 0 unless GoodCatalog.final_storage_target_for(good_key) == target
+
+      stored_amount_for(good_key)
     end
   end
 

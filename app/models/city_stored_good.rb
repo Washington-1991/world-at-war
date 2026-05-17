@@ -5,7 +5,7 @@ class CityStoredGood < ApplicationRecord
 
   validates :good_key,
             presence: true,
-            inclusion: { in: GoodCatalog.generic_stored_good_keys },
+            inclusion: { in: GoodCatalog.stored_good_keys },
             uniqueness: { scope: :city_id }
 
   validates :amount,
